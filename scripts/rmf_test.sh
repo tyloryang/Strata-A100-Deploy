@@ -25,5 +25,5 @@ for i in $(seq 1 40); do
     break
   fi
 done
-curl -s --max-time 10 http://192.168.122.4:8080/health; echo
+curl -s --max-time 10 http://127.0.0.1:8800/health; echo
 echo "==== $(date '+%F %T') 结束"

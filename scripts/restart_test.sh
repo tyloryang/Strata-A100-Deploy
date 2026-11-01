@@ -1,7 +1,7 @@
 #!/bin/bash
 # 验证 docker stop 释放显存、docker start 能再次就绪
 LOG=/root/offline_check/restart.log
-IP=192.168.122.4
+IP=${IP:-127.0.0.1}
 exec > >(tee -a "$LOG") 2>&1
 
 echo "==== $(date '+%F %T') 停止容器"

@@ -27,7 +27,7 @@ docker port strata
 ss -ltnp | grep 8800
 
 echo "-- 本地探活"
-for u in "http://127.0.0.1:8800/health" "http://192.168.122.4:8800/health" "http://127.0.0.1:8800/"; do
+for u in "http://127.0.0.1:8800/health" "http://127.0.0.1:8800/health" "http://127.0.0.1:8800/"; do
   printf '%-38s -> ' "$u"; curl -s -o /dev/null -w '%{http_code}\n' --max-time 8 "$u"
 done
 echo "-- 8080 现在应无监听"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # 速度与内存观测：短提示 400 token、同提示复测（缓存）、长提示 2000 token 预填
 KEY=$(cat /etc/strata/api_key)
-IP=192.168.122.4
+IP=${IP:-127.0.0.1}
 URL="http://$IP:8080/v1/chat/completions"
 
 call() {

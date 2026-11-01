@@ -28,7 +28,7 @@ echo "== 宿主机所有监听端口"
 ss -ltnp
 echo
 echo "== 探活"
-for u in "http://127.0.0.1:8800/health" "http://192.168.122.4:8800/health" "http://127.0.0.1:8080/health" "http://192.168.122.4:8080/health"; do
+for u in "http://127.0.0.1:8800/health" "http://127.0.0.1:8800/health" "http://127.0.0.1:8080/health" "http://127.0.0.1:8080/health"; do
   printf '%-42s -> ' "$u"
   curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 "$u" || echo "fail"
 done

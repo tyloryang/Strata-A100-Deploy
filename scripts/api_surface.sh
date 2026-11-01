@@ -1,7 +1,7 @@
 #!/bin/bash
 # 额外验证：Anthropic 兼容端点 + 两请求顺序处理（parallel=1 排队）
 KEY=$(cat /etc/strata/api_key)
-IP=192.168.122.4
+IP=${IP:-127.0.0.1}
 LOG=/root/offline_check/api_surface.log
 exec > >(tee -a "$LOG") 2>&1
 echo "==== $(date '+%F %T') 接口面验证"

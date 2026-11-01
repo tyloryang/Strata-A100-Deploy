@@ -2,7 +2,7 @@
 # 把现有 docker run 容器切换到 docker-compose 管理，并计时
 set -u
 LOG=/root/offline_check/compose.log
-IP=192.168.122.4
+IP=${IP:-127.0.0.1}
 cd /data/compose/strata || exit 1
 exec > >(tee -a "$LOG") 2>&1
 

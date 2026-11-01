@@ -3,7 +3,7 @@
 set -u
 BASE=/data/qwen-strata
 IMG=strata-qwen38:cuda12-1.0
-BIND_IP=${BIND_IP:-192.168.122.4}
+BIND_IP=${BIND_IP:-0.0.0.0}
 
 docker rm -f strata >/dev/null 2>&1
 docker run -d --name strata --restart unless-stopped \

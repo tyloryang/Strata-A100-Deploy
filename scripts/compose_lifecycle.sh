@@ -2,7 +2,7 @@
 # compose 生命周期验证：restart / stop / start / down / up / rm -f
 set -u
 LOG=/root/offline_check/compose_lifecycle.log
-IP=192.168.122.4
+IP=${IP:-127.0.0.1}
 cd /data/compose/strata || exit 1
 exec > >(tee -a "$LOG") 2>&1
 

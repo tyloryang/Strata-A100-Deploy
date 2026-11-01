@@ -2,7 +2,7 @@
 # 验证 262144 上下文：发一个约 20 万 token 的中文长提示，记录预填耗时
 LOG=/root/offline_check/longctx.log
 exec > >(tee -a "$LOG") 2>&1
-IP=192.168.122.4
+IP=${IP:-127.0.0.1}
 KEY=$(cat /etc/strata/api_key)
 echo "==== $(date '+%F %T') 长上下文测试"
 
