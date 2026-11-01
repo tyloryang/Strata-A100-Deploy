@@ -1,7 +1,7 @@
 # Strata + Qwen3.8-Flash-Next IQ3_XXS 离线包：新内网机器复现计划
 
 > 依据：《离线环境部署手册（2 × A100 40GB PCIe）》（F:\strata_pack_offline，本文简称"手册"）
-> 执行机：223.109.239.30:13220（root），CentOS 7 + 2 × A100-SXM4-40GB
+> 执行机：<公网IP>:<SSH端口>（root），CentOS 7 + 2 × A100-SXM4-40GB
 > 计划制定：2026-11-02 00:00 CST　｜　定时验证启动：2026-11-02 03:00 CST
 > 说明：本文件是"怎么在新机器上跑起来"的可执行计划；实际执行结果另记在《执行记录》里。
 
@@ -38,13 +38,13 @@
 | 磁盘 | `/data` = `/dev/vdb` 985G ext4，可用 930G | /data 2.0T，剩 1.3T | 够用（包 198G + 解开约 130G） |
 | 根分区 | 192G，可用 172G | /opt 剩 9G | 拉镜像/解包都要走 /data |
 | Docker | 20.10.17，已注册 nvidia runtime，容器内可见双卡 | 已装，带 nvidia runtime | 一致 |
-| 网络 | 单网口 `ens3` 192.168.122.4/24（libvirt NAT 网段） | 内网 IP | **注意**：这是 NAT 地址，外部局域网默认访问不到 |
+| 网络 | 单网口 `ens3` <内网IP>/24（libvirt NAT 网段） | 内网 IP | **注意**：这是 NAT 地址，外部局域网默认访问不到 |
 | 现有负载 | 无 vLLM 容器，8080 空闲 | 需先停 qwen3.8-27b | 无冲突 |
 
 ### 1.2 由此带来的三个偏差处置
 
 1. **内存只有 94GB**：手册按 560GB 设计（专家层放内存）。2 × 40GB 显存要尽量把约 40GiB 专家全塞进显存；启动后先看日志里的专家缓存数量，**接近 24576 = 全部在显存**，内存压力才可控。若日志显示大量专家落内存，把 `--context` 从 262144 降到 131072 或 65536，或加 `--kv q4_0` 省 KV。
-2. **网络是 192.168.122.0/24（NAT）**：手册要求 `-p <内网IP>:8080:8080`。按本机现状只能绑 192.168.122.4；要让外部局域网访问，需要在宿主机做端口转发/桥接，属于部署之外的网络配置，验收时按"本机 + NAT 网段内可达"判定，外部可达另记。
+2. **网络是 <内网网段>/24（NAT）**：手册要求 `-p <内网IP>:8080:8080`。按本机现状只能绑 <内网IP>；要让外部局域网访问，需要在宿主机做端口转发/桥接，属于部署之外的网络配置，验收时按"本机 + NAT 网段内可达"判定，外部可达另记。
 3. **CentOS 7 内核 3.10**：Docker 20.10 + nvidia-container-cli 1.10 已正常工作（实测容器内 `nvidia-smi` 看到双卡），预期无阻塞；`--security-opt label=disable` 仍保留，避免 SELinux 干扰。
 
 ### 1.3 容量与内存预算
@@ -155,7 +155,7 @@ docker run --rm --gpus '"device=0,1"' -e KEY="$(cat /etc/strata/api_key)" \
 ```bash
 docker run -d --name strata --restart unless-stopped --gpus '"device=0,1"' \
   --ulimit memlock=-1:-1 --shm-size 2g --stop-timeout 120 \
-  --security-opt label=disable -p 192.168.122.4:8080:8080 \
+  --security-opt label=disable -p <内网IP>:8080:8080 \
   -v $BASE:/data $IMG /data/Strata/run-iq3_xxs.sh
 docker logs -f strata   # 等 ready:
 ```
@@ -252,18 +252,18 @@ services:
 | 13274 | 8804 |
 | 13275 | 8805 |
 
-公网地址两条：`223.109.239.30`（移动）、`180.127.11.167`（电信）。所以 compose 发布 `8800`，公网访问 `http://223.109.239.30:13270/`。**发布端口不落在这 6 个里，公网永远不通**——这跟容器、镜像、Strata 都没关系。
+公网地址两条：`<公网IP>`（移动）、`<公网IP-电信>`（电信）。所以 compose 发布 `8800`，公网访问 `http://<公网IP>:13270/`。**发布端口不落在这 6 个里，公网永远不通**——这跟容器、镜像、Strata 都没关系。
 
 最终链路与已验证结果：
 
 ```
 公网 13270 → VM 8800 → 容器 8080
-GET http://223.109.239.30:13270/health   → 200  {"status":"ok",...,"loaded":true}
-GET http://223.109.239.30:13270/         → 200  text/html 16,960B  <title>Strata</title>
-GET http://223.109.239.30:13270/v1/models 无 Key → 401
+GET http://<公网IP>:13270/health   → 200  {"status":"ok",...,"loaded":true}
+GET http://<公网IP>:13270/         → 200  text/html 16,960B  <title>Strata</title>
+GET http://<公网IP>:13270/v1/models 无 Key → 401
 ```
 
-- `BIND_IP=0.0.0.0` 会让端口暴露在所有网卡上（含 docker0/virbr0）；手册原意是只绑内网 IP 以缩小暴露面。要按手册收紧就写 `192.168.122.4`，要图省事就 `0.0.0.0`——API 有 Key 保护，但暴露面确实变大。注意：经平台转发到公网后，暴露面由平台端口决定，与 `BIND_IP` 无关。
+- `BIND_IP=0.0.0.0` 会让端口暴露在所有网卡上（含 docker0/virbr0）；手册原意是只绑内网 IP 以缩小暴露面。要按手册收紧就写 `<内网IP>`，要图省事就 `0.0.0.0`——API 有 Key 保护，但暴露面确实变大。注意：经平台转发到公网后，暴露面由平台端口决定，与 `BIND_IP` 无关。
 - 只用 compose 改 published 端口而容器内还是 8080 时，映射写成 `8800:8080` 即可，不要以为写错；`docker port` 会显示 `8080/tcp -> 0.0.0.0:8800`。
 - **Web 页面是 `GET /`**，`/v1` 只是 API 前缀，浏览器直接开 `http://<IP>:13270/v1` 会得到 404，这是正常的，不是服务坏了。
 - 容器日志里的 `open http://127.0.0.1:8080/` 与 `from other devices: http://172.x.x.x:8080/` 是服务在容器内自己算的提示（`serve/server.py` 里 `host=0.0.0.0` 时把 `here` 写死成 127.0.0.1，另一个是容器的桥接 IP，重建网络还会变），**不能当访问地址**。
@@ -305,9 +305,9 @@ docker-compose ps                # 看 (healthy)
 ```bash
 KEY=$(cat /etc/strata/api_key)
 curl -s http://127.0.0.1:8080/health
-curl -s -o /dev/null -w '%{http_code}\n' http://192.168.122.4:8080/v1/models
-curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $KEY" http://192.168.122.4:8080/v1/models
-curl -s http://192.168.122.4:8080/v1/chat/completions -H "Authorization: Bearer $KEY" \
+curl -s -o /dev/null -w '%{http_code}\n' http://<内网IP>:8080/v1/models
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $KEY" http://<内网IP>:8080/v1/models
+curl -s http://<内网IP>:8080/v1/chat/completions -H "Authorization: Bearer $KEY" \
   -H 'Content-Type: application/json' \
   -d '{"model":"x","messages":[{"role":"user","content":"用一句话说明什么是TCP三次握手。"}],"max_tokens":200,"temperature":0,"reasoning_effort":"none"}'
 nvidia-smi
@@ -343,7 +343,7 @@ nvidia-smi
 | 断网下 setup 失败 | pip、curl、下载报错 | 手册退路：手工改 JSON，不重试 |
 | 75.8GB tar 解包占空间 | `df` 逼近满 | 解包前确认剩余 ≥ 180G；解完删 tar |
 | 上传不完整/被改名 | 无 .filepart 但字节数不符 | 只重传该文件，校验值不符一律不用 |
-| NAT 网段外部不可达 | 局域网另一台机器连 192.168.122.4 超时 | 交付时标注：需宿主机端口转发，非本包问题 |
+| NAT 网段外部不可达 | 局域网另一台机器连 <内网IP> 超时 | 交付时标注：需宿主机端口转发，非本包问题 |
 | 驱动 550 与引擎 ABI | 容器拒绝启动/报驱动过旧 | 实测 550 ≥ 535 要求，预期可用；真报错再升级驱动或回 CUDA 12.2 重编 |
 
 ---
