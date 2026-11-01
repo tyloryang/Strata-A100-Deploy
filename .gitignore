@@ -1,0 +1,20 @@
+# 离线包与权重（体积原因不入库）
+*.tar
+*.gguf
+*.bin
+*.part
+*.filepart
+
+# 密钥
+.env
+api_key
+*api_key*
+strata-iq3_xxs.json
+
+# 运行时产物
+*.log
+evidence/
+
+# 系统
+.DS_Store
+Thumbs.db

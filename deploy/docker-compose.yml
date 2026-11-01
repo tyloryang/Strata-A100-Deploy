@@ -1,0 +1,33 @@
+services:
+  strata:
+    image: strata-qwen38:cuda12-1.0
+    container_name: strata
+    restart: unless-stopped
+    init: true
+    command: ['/data/Strata/run-iq3_xxs.sh']
+    ports:
+      # 宿主 8800 -> 容器 8080；平台已把公网 13270 转发到本机 8800
+      - '${BIND_IP}:8800:8080'
+    volumes:
+      - '${BASE}:/data'
+    shm_size: 2g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    stop_grace_period: 120s
+    security_opt:
+      - label=disable
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0', '1']
+              capabilities: [gpu]
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1:8080/health | grep -Eq loaded.:.true']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
