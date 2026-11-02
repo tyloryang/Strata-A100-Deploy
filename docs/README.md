@@ -29,7 +29,9 @@
 
 ---
 
-## 二、当前状态快照（2026-11-02 20:42）
+## 二、当前状态快照（2026-11-02 21:14）
+
+> 这一版把 `--batch-mtp` **真正启用了**（`STRATA_BATCH_MTP_SERIAL=1`），压测结果是三种并发配置里**最差的**，详见《压测文档》§11。
 
 ### 服务
 
@@ -51,16 +53,16 @@ args 45 项
 PLE 表    --ple-io mmap（26.8 GiB 走页缓存，可回收）
 专家      --resident-experts（全部 24576 驻留主机 RAM，钉住约 12.65 GiB）
 专家缓存  12288 / 24576（50%）
-会话缓存  --conversation-cache-mib 16384 / slots 4 / min-tokens 4096 / park-gain 2048
-批处理    --batch 4（pipelined 2 groups of 2），每槽约 0.51 GiB × 2 卡
-投机      --spec 4 / --spec-min-p 0.5 / --mtp —— **实际未运行**，见下
+会话缓存  --conversation-cache-mib 16384 / slots 8 / min-tokens 4096 / park-gain 2048
+批处理    --batch 8（serial 1 group of 8），每槽约 0.51 GiB × 2 卡
+投机      `--batch-mtp` **已启用**：8 个 slot drafter（各 50 MiB 私有 K/V），共享 solo drafter 权重
 ESP       已按请求启用（sampling.experimental_speed_projection=true）
 推理      reasoning_effort=medium，budget 4096，close_retry=true
 采样      temperature 1.0 / top_p 0.95 / top_k 20
-env       ROUTE_TAIL_SKIP=0  RESIDENT_HEADROOM_GIB=2  ADAPT_OVERLAP=1
+env       ROUTE_TAIL_SKIP=0  RESIDENT_HEADROOM_GIB=2  ADAPT_OVERLAP=1  BATCH_MTP_SERIAL=1
 ```
 
-> ⚠️ **`--batch-mtp` 在 args 里，但引擎判定为 OFF。** 双卡层拆分 + `--batch` 默认走流水线分组，而流水线分组**不跑各槽草稿**（引擎启动日志有明确 WARNING）。所有请求的草稿计数都是 `drafts accepted 0 of 0`，即 `--spec 4` / `--mtp` 当前零贡献。要启用须加 `--batch-groups 1` 或 `STRATA_BATCH_MTP_SERIAL=1`，但引擎实测 4 路并发下流水线比串行 MTP 快 25–30%。详见《压测文档》§9.3。
+> ⚠️ **`--batch-mtp` 这次真的开着，但它让性能变差了。** 串行窗口（`1 group of 8 slots`）在 4 路以上并发不如流水线分组：长提示并发 8 时聚合比 4 槽流水线低 16%、TPOT 差 2.9 倍。引擎启动警告原本就写了这一点。详见《压测文档》§11.4。
 
 ### 资源
 
