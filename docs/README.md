@@ -29,7 +29,7 @@
 
 ---
 
-## 二、当前状态快照（2026-11-02 16:05）
+## 二、当前状态快照（2026-11-02 16:42）
 
 ### 服务
 
@@ -44,22 +44,29 @@
 ### 配置
 
 ```
+args 43 项
 层拆分    K=24：CUDA0 层 0-23，CUDA1 层 24-47 + head
 上下文    262144（int8 KV，--kv-resident 32768 流式落内存）
 预填块    --prefill auto:32768  → 实测解析为 32768（96 槽环形缓冲）
 PLE 表    --ple-io mmap（26.8 GiB 走页缓存，可回收）
-专家缓存  12288 / 24576（50%），CUDA1 占 22.24 GiB
+专家      --resident-experts（全部 24576 驻留主机 RAM，钉住 12.65 GiB）
+专家缓存  12288 / 24576（50%），CUDA1 占 22.24 GiB；日志显示 100% resident
+会话缓存  --conversation-cache-mib 12288 / slots 4 / min-tokens 4096
 批处理    --batch 4（2 组 × 2 槽，每槽 0.51 GiB × 2 卡）
 投机      MTP，--spec 4 / --spec-min-p 0.5
 ESP       控制向量已加载（layers 4..44），但未确认按请求生效
+推理      reasoning_effort=medium，budget 4096，close_retry=true
+采样      temperature 1.0 / top_p 0.95 / top_k 20
+env       ROUTE_TAIL_SKIP=0  RESIDENT_HEADROOM_GIB=6  ADAPT_OVERLAP=1
 ```
 
 ### 资源
 
 ```
 显存      CUDA0 37.8 / 40 GB（仅剩 3.2 GB）  CUDA1 31.2 / 40 GB
-内存      98.8 GB 总，MemAvailable 30.6 GB，Mlocked 0，swap 8 GB 基本未用
-引擎 RSS  61.7 GB（专家 arena 40 + PLE 表 + 权重/缓冲）
+内存      98.8 GB 总，MemAvailable 57.1 GB，Mlocked 0，Cached 48.8 GB
+引擎 RSS  39.3 GB（专家走文件映射，不再常驻匿名内存）
+swap      8 GB，基本未用
 ```
 
 ### 已验证的能力
@@ -90,9 +97,11 @@ ESP       控制向量已加载（layers 4..44），但未确认按请求生效
 
 ### 3. 内存是这台机器的主要约束
 
-94 GiB 内存里引擎独占约 62–77 GB（取决于 PLE 表模式）。曾因 `parallel=8` + 8 个 200K 并发把机器压到假死近 50 分钟。
+94 GiB 内存里引擎要放下 40 GiB 专家 + 26.8 GiB PLE 表。曾因 `parallel=8` + 8 个 200K 并发把机器压到假死近 50 分钟。
 
-**安全边界**：200K 场景并发 ≤ 4；`parallel` 必须按内存公式算，不能照搬短提示的经验值。详见压测文档 §6。
+**当前的三道保险**：`--resident-experts`（专家走可回收的文件映射，RSS 61.7→39.3 GB）、`--ple-io mmap`（PLE 表可回收）、`--conversation-cache-mib 12288`（会话缓存有上限）。可用内存因此从 18.5 → 30.6 → **57.1 GB**。
+
+**安全边界仍然成立**：200K 场景并发 ≤ 4。会话缓存会在多轮使用中最多占用 12 GiB，`MemAvailable` 会随之下降，压测时要盯。详见压测文档 §6。
 
 ---
 
@@ -111,6 +120,13 @@ ESP       控制向量已加载（layers 4..44），但未确认按请求生效
 | `--kv k8v4` 的实际收益与质量 | **未测** | 与 int8 对比解码速度 + 抽查质量 |
 | IQ3_S / Coder 模型的 packs 生成 | **未做** | 需 `setup.sh --model IQ3_S`，约 50 GB 磁盘 |
 | 驱动 535 跑 CUDA 12.4 引擎 | **不适用于本机**（本机 550.78） | 迁移目标机时才需要 |
+| `--resident-experts` 带来的解码收益 | **未测**（内存收益已实测） | 开/关 A/B 对比解码 tok/s |
+| `--conversation-cache-mib 12288` 的实际效果 | **未测** | 多轮第 12 轮 TTFT，0 ↔ 12288 |
+| `--prompt-cache-tail` 是否在双卡生效 | **存疑**（帮助注明 single GPU） | 加/不加同一多轮用例 |
+| `STRATA_ADAPT_OVERLAP*` 是否在双卡生效 | **存疑**（`--adapt-async` 注明 one GPU） | 同上；注意 run-to-run 不 bit-exact |
+| `STRATA_ROUTE_TAIL_SKIP=0` 的代价 | **已知 13-16% 解码**，本机未量化 | 0 ↔ 7 对比，并抽查答案质量 |
+| `reasoning_effort` 开/关的性能差异 | **未测** | `none` vs `medium`，同一语料 |
+| `temperature 1.0` 对投机接受率的压制 | **未测** | temp 0 vs 1.0 的 `Spec. Accept Rate` |
 
 ---
 

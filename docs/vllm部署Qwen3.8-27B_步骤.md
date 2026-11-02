@@ -10,7 +10,7 @@
 
 | 项 | 状态 |
 |---|---|
-| 模型下载（51.77 GB，18 个分片） | **已完成**，落在 `F:\models\Qwen3.8-27B`，校验见 §2 |
+| 模型下载（51.77 GiB / 55.6 GB，18 个分片） | **已完成并校验 32/32 通过**，落在 `F:\models\Qwen3.8-27B`，详见 §2 |
 | 校验清单 | `F:\models\Qwen3.8-27B.sha256`（sha256sum 格式，可直接 `-c`） |
 | 目标机部署 | **未执行**（按你的要求） |
 | 与 Strata 的对比压测 | **未执行**，方案见 §9 |
@@ -28,7 +28,7 @@
 | 词表 | 248320 | — |
 | MTP | `mtp_num_hidden_layers: 1` | **模型自带投机解码草稿头**，可以开 `--speculative-config` |
 | RoPE | `partial_rotary_factor 0.25` + `mrope_interleaved` | 不要手动改 rope 参数，镜像会自己解析 |
-| 权重 | BF16，51.77 GB（48.2 GiB） | 单卡 40 GB 装不下，**必须 TP=2** |
+| 权重 | BF16，**51.77 GiB（55.6 GB）** | 单卡 40 GB 装不下，**必须 TP=2**；每卡约 25.9 GiB |
 
 **推论一**：262144 上下文在 2×40 GB 上**放得下**，账在 §6。
 **推论二**：它是 VLM，纯文本压测时视觉塔白占约 1 GiB 显存和一段启动时间 → 加 `--language-model-only` 可以不要它。
@@ -38,22 +38,24 @@
 
 ## 2. 模型已经下好了（本仓库内完成）
 
-- 位置：`F:\models\Qwen3.8-27B`，33 个文件，51.77 GB（18 个 safetensors 分片 + tokenizer/config/chat_template）
-- 源：ModelScope `Qwen/Qwen3.8-27B`（HF 直连本机只有 ~1.6 MB/s，ModelScope 聚合 ~35 MB/s，省约 20 分钟）
-- 校验清单：`F:\models\Qwen3.8-27B.sha256`，格式为 `<sha256>  <相对路径>`，在模型目录下 `sha256sum -c ../Qwen3.8-27B.sha256` 即可
-- 双源一致性：ModelScope 与 HF 是**同一份字节** —— 抽查 `config.json` / `merges.txt` / `tokenizer.json` / `chat_template.jinja` 四个文件，两边 sha256 完全相同；18 个分片的字节尺寸也逐一相同
-- 说明：HF 这条 repo 的 API 返回的是 git blob SHA-1（不是 LFS oid），所以**校验以 ModelScope 的内容 sha256 为准**，它已用实际下载字节反证过是对的
+- 位置：`F:\models\Qwen3.8-27B`，33 个文件，51.77 GiB（55.6 GB，18 个 safetensors 分片 + tokenizer/config/chat_template）
+- 源：ModelScope `Qwen/Qwen3.8-27B`。HF 直连本机只有 ~1.6 MB/s，ModelScope 4 并发聚合 20–35 MB/s，13.8 分钟拉完
+- 校验结果：**32/32 全部通过**（逐文件 sha256 比对，51.77 GiB 读盘 33 s）
+- 清单文件：`F:\models\Qwen3.8-27B.sha256`，同时已放进模型目录作为 `SHA256SUMS`
+- 双源一致性：ModelScope 与 HF 是**同一份字节** —— 抽查 `config.json` / `merges.txt` / `tokenizer.json` / `chat_template.jinja` 四个文件两边 sha256 完全相同；18 个分片字节尺寸也逐一相同
+- 说明：HF 这条 repo 的 API 返回 git blob SHA-1（不是 LFS oid），所以**校验以内容 sha256 为准**，该值已用实际下载字节反证过
+- 目录里多一个 `configuration.json`（ModelScope 的仓库描述文件，2 字节级小文件），不影响 transformers / vLLM 加载
 
 要在目标上重放这份校验：
 
 ```bash
 cd /data/models/Qwen3.8-27B
-sha256sum -c SHA256SUMS        # 全部 OK 才继续
+sha256sum -c SHA256SUMS        # 应输出 32 行 OK
 ```
 
 ### 2.1 传到目标机
 
-52 GB，别用 `scp` 整目录（断了就得重来）：
+55.6 GB，别用 `scp` 整目录（断了就得重来）：
 
 ```bash
 # 推荐：可续传、可限速
@@ -69,7 +71,7 @@ ssh -p <SSH端口> root@<公网IP> \
 
 若链路会断：`tar -C /f/models -cf - Qwen3.8-27B | split -b 8G - Qwen38.tar.`，分卷拷过去 `cat Qwen38.tar.* | tar -xf - -C /data/models/`，再校验。
 
-> 注意目标机 `/data` 只剩 ~500 GB，52 GB 模型 + 8–11 GB 镜像没问题，但别再顺手下一份 FP8 权重（又是 28 GB）。
+> 注意目标机 `/data` 只剩 ~500 GB：55.6 GB 模型 + 8–11 GB 镜像没问题，但别再顺手下一份 FP8 权重（又是 28 GB）。
 
 ---
 
@@ -160,20 +162,30 @@ print(\"Qwen3_5ForConditionalGeneration\",
 ## 6. 显存账本（2×A100-40G，bf16 权重 + fp8 KV）
 
 ```
-每卡预算   0.92 × 40 GiB                       = 36.8 GiB
-权重       51.77 GB ÷ 2 ≈ 24.1 GiB             → 剩 12.7 GiB
-视觉塔     ~1.0 GiB（加 --language-model-only 可省）
+每卡预算   0.92 × 40 GiB                        = 36.8 GiB
+权重       51.77 GiB（55.6 GB）÷ 2 ≈ 25.9 GiB   → 剩 10.9 GiB
+视觉塔     ~1.0 GiB（--language-model-only 可省）
 MTP 头     ~0.4 GiB
-激活+CUDA graph  ~1.5 GiB（--enforce-eager 时降到 ~0.6）
+激活+CUDA graph  ~1.5 GiB（--enforce-eager 时 ~0.6）
 线性注意力 state 48 层 × 48 头 × 128 × 128 × 4B ≈ 151 MB / 每条序列
 KV        16 层 × 2(K,V) × 4 头 × 256 维
           fp8_e4m3  → 32 KiB/token → 262144 token = 8.0 GiB（每卡 4.0）
           bf16      → 64 KiB/token → 262144 token = 16.0 GiB（每卡 8.0）
 ```
 
-**结论**：单序列满 262144 上下文，fp8 KV 下每卡约用 30 GiB，留 6–7 GiB 余量；退到 bf16 KV（`auto`）也放得下（每卡约 34 GiB，余量 2–3 GiB，CUDA graph 要小心）。所以 `--gpu-memory-utilization 0.92` 是合理的，**瓶颈不在显存，在吞吐**。
+**结论**：
 
-KV 池是按 token 总量分配的，不是每条序列预扣 8 GiB。启动日志会打一行 `GPU KV cache size: N tokens` —— 这个 N 是后面压测并发的天花板，**必须记下来**。
+| 配置 | 每卡占用 | 判定 |
+|---|---|---|
+| fp8 KV + 262144 + `--language-model-only` | 25.9 + 0.4 + 1.5 + 4.0 ≈ 31.8 GiB | ✓ 余 ~5 GiB，稳 |
+| fp8 KV + 262144（带视觉塔） | ≈ 32.8 GiB | △ 余 ~4 GiB，勉强；CUDA graph + MTP 容易顶边 |
+| **bf16 KV（auto）+ 262144** | 25.9 + 1.0 + 1.5 + 8.0 ≈ 36.4 GiB | ✗ **顶到 36.8 的线，基本必失败** |
+
+也就是说：**`fp8_e4m3` 在这台机器上不是"省着玩"，是 262144 能不能开起来的前提**。fp8 起不来时，`auto` 必须同时把 `--max-model-len` 降到 131072（KV 降到 8 GiB）才成立 —— 别以为"退 auto 就完事"。
+
+KV 池是按 token 总量分配的，不是每条序列预扣 8 GiB。启动日志会打 `GPU KV cache size: N tokens`，**这个 N 是并发天花板，必须记下来**；按上表推算，fp8 + 262144 时 N 约 26–29 万 token。
+
+池子偏小时的三个加杠杆（按代价排序）：`--gpu-memory-utilization 0.95`（+1.2 GiB/卡）→ `--language-model-only`（+1 GiB）→ 降 `--max-model-len`。
 
 ---
 
@@ -240,7 +252,7 @@ vllm serve /data/models/Qwen3.8-27B-FP8 \
 
 ### 8.1 `--max-num-seqs 1` —— 和 Strata 的 `parallel=1` 是同一个方法学错误
 
-`max-num-seqs` 是**同时在跑的序列数上限**，设 1 就是单流串行服务器：客户端并发 2/4/8 全部排队，聚合吞吐恒等于单流吞吐。你们 7 月那批 Strata 压测已经吃过一次这个亏（62 个用例里所有"并发"档位都卡在 ~50–110 tok/s）。要让 vLLM 展示真实吞吐，这条必须给到 16–64。
+`max-num-seqs` 是**同时在跑的序列数上限**，设 1 就是单流串行服务器：客户端并发 2/4/8 全部排队，聚合吞吐恒等于单流吞吐。你们今天那批 Strata 压测已经吃过一次这个亏：62 个用例里所有"并发"档位都卡在 ~50–110 tok/s，因为服务端只有一个槽位。要让 vLLM 展示真实吞吐，这条必须给到 16–64。
 
 ### 8.2 `--enforce-eager` 关掉了 CUDA graph
 
@@ -260,7 +272,7 @@ A100 是 SM80，而 vLLM 的 FP8 原生快速路径是 SM89+（源码里 `platfo
 # 起了就记下这一行的数字
 docker logs vllm 2>&1 | grep -E 'KV cache size|kv_cache_dtype|fp8'
 
-# 起不来 → 换成 auto（bf16 KV），显存仍然够（见 §6），只是池子小一半
+# 起不来 → 换 auto（bf16 KV）时必须同时把 --max-model-len 降到 131072，见 §6
 ... --kv-cache-dtype auto ...
 ```
 
@@ -354,12 +366,24 @@ curl -s $H/metrics | grep -E 'vllm:(num_requests_running|gpu_cache_usage_perc|sp
 | 风险 | 触发信号 | 处置 |
 |---|---|---|
 | 架构不支持 | 启动即报 `Qwen3_5ForConditionalGeneration is not supported` | 换 `vllm/vllm-openai:qwen38` 或 ≥0.17.0 的镜像；别升 transformers 硬凑 |
-| fp8 KV 起不来 | `kv_cache_dtype` 相关报错 / 启动中断 | 退 `--kv-cache-dtype auto` |
+| fp8 KV 起不来 | `kv_cache_dtype` 相关报错 / 启动中断 | 退 `--kv-cache-dtype auto` **并把 `--max-model-len` 降到 131072** |
 | CUDA graph OOM | 启动末段 `torch.OutOfMemoryError` in graph capture | 加 `--enforce-eager`，或 `--language-model-only`，或降 `--gpu-memory-utilization` 到 0.88 |
 | 加载太慢 / 内存压力 | 加载 5 分钟以上，`MemAvailable` 掉到 1–2 GB | 属正常（mmap + page cache 可回收），但别同时压测；必要时 `--load-format safetensors` |
 | 端口暴露 | 8000 绑 0.0.0.0 且平台做了公网映射 | 至少 iptables 限源网段；key 不要出现在 `ps` 里（用环境变量文件） |
 | 对比期间线上服务中断 | 停 Strata 之后 | 低峰期执行；压测完 `docker compose up -d` 复原 |
 | 结论被 random 语料污染 | 报告里出现 random 数据集出的 tok/s | 禁止入报告 |
+
+---
+
+---
+
+## 12. 这份文档里没做的事
+
+- 没有连目标机、没有执行任何 `docker`/`vllm` 命令
+- 没有下 `Qwen/Qwen3.8-27B-FP8`（28 GB，需要时再说）
+- 没有把模型传到目标机（`/data/models/Qwen3.8-27B` 还是空的）
+
+要开工时按 §3 → §4 → §5 → §7 的顺序走，每步的验收点都在对应小节里。
 
 ---
 
@@ -369,7 +393,7 @@ curl -s $H/metrics | grep -E 'vllm:(num_requests_running|gpu_cache_usage_perc|sp
 |---|---|---|---|
 | `<MODEL_PATH>` | 权重目录 | `/data/models/Qwen3.8-27B` | ✓ 换成绝对路径，别用容器外路径 |
 | `--served-model-name` | API 里的 `model` 字段 | 任意 | ✓ 建议保留，压测脚本里按这个名调 |
-| `--tensor-parallel-size 2` | 权重切两卡 | BF16 51.77 GB，单卡装不下 | ✓ 必须 2；4 个 KV 头能均分 |
+| `--tensor-parallel-size 2` | 权重切两卡 | BF16 51.77 GiB，单卡 40 GB 装不下 | ✓ 必须 2；4 个 KV 头能均分 |
 | `--max-model-len 262144` | 上下文上限 | 模型原生就是这个长度 | ✓ 成立，账见 §6 |
 | `--gpu-memory-utilization 0.92` | 每卡预留比例 | 36.8 GiB/卡 | ✓ 合理；CUDA graph OOM 时可降到 0.88 |
 | `--max-num-seqs 1` | 并发序列上限 | — | ✗ **这是给单流延迟测试用的**，做吞吐对比会失真（§8.1） |
@@ -426,11 +450,3 @@ docker logs -f vllm-qwen38
 权重目录挂 `:ro`，避免容器里误写。
 
 ---
-
-## 12. 这份文档里没做的事
-
-- 没有连目标机、没有执行任何 `docker`/`vllm` 命令
-- 没有下 `Qwen/Qwen3.8-27B-FP8`（28 GB，需要时再说）
-- 没有把模型传到目标机（`/data/models/Qwen3.8-27B` 还是空的）
-
-要开工时按 §3 → §4 → §5 → §7 的顺序走，每步的验收点都在对应小节里。
