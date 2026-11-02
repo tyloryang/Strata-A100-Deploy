@@ -29,7 +29,7 @@
 
 ---
 
-## 二、当前状态快照（2026-11-02 20:20）
+## 二、当前状态快照（2026-11-02 20:42）
 
 ### 服务
 
@@ -52,7 +52,7 @@ PLE 表    --ple-io mmap（26.8 GiB 走页缓存，可回收）
 专家      --resident-experts（全部 24576 驻留主机 RAM，钉住约 12.65 GiB）
 专家缓存  12288 / 24576（50%）
 会话缓存  --conversation-cache-mib 16384 / slots 4 / min-tokens 4096 / park-gain 2048
-批处理    --batch 8（pipelined 2 groups of 4），每槽约 0.51 GiB × 2 卡
+批处理    --batch 4（pipelined 2 groups of 2），每槽约 0.51 GiB × 2 卡
 投机      --spec 4 / --spec-min-p 0.5 / --mtp —— **实际未运行**，见下
 ESP       已按请求启用（sampling.experimental_speed_projection=true）
 推理      reasoning_effort=medium，budget 4096，close_retry=true
@@ -65,8 +65,8 @@ env       ROUTE_TAIL_SKIP=0  RESIDENT_HEADROOM_GIB=2  ADAPT_OVERLAP=1
 ### 资源
 
 ```
-显存      CUDA0 27.4 / 40 GB   CUDA1 33.5 / 40 GB
-内存      98.8 GB 总，MemAvailable 31.3 GB，Mlocked 0
+显存      CUDA0 37.8 / 40 GB（仅剩 3.2 GB）   CUDA1 31.2 / 40 GB
+内存      98.8 GB 总，MemAvailable 58.3 GB，Mlocked 0
 引擎 RSS  专家走 mmap，具体值随 --ple-io 模式变化
 swap      8 GB，基本未用
 ```
