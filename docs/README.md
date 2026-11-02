@@ -29,7 +29,7 @@
 
 ---
 
-## 二、当前状态快照（2026-11-02 16:42）
+## 二、当前状态快照（2026-11-02 20:20）
 
 ### 服务
 
@@ -44,28 +44,30 @@
 ### 配置
 
 ```
-args 43 项
+args 45 项
 层拆分    K=24：CUDA0 层 0-23，CUDA1 层 24-47 + head
 上下文    262144（int8 KV，--kv-resident 32768 流式落内存）
 预填块    --prefill auto:32768  → 实测解析为 32768（96 槽环形缓冲）
 PLE 表    --ple-io mmap（26.8 GiB 走页缓存，可回收）
-专家      --resident-experts（全部 24576 驻留主机 RAM，钉住 12.65 GiB）
-专家缓存  12288 / 24576（50%），CUDA1 占 22.24 GiB；日志显示 100% resident
-会话缓存  --conversation-cache-mib 12288 / slots 4 / min-tokens 4096
-批处理    --batch 4（2 组 × 2 槽，每槽 0.51 GiB × 2 卡）
-投机      MTP，--spec 4 / --spec-min-p 0.5
-ESP       控制向量已加载（layers 4..44），但未确认按请求生效
+专家      --resident-experts（全部 24576 驻留主机 RAM，钉住约 12.65 GiB）
+专家缓存  12288 / 24576（50%）
+会话缓存  --conversation-cache-mib 16384 / slots 4 / min-tokens 4096 / park-gain 2048
+批处理    --batch 8（pipelined 2 groups of 4），每槽约 0.51 GiB × 2 卡
+投机      --spec 4 / --spec-min-p 0.5 / --mtp —— **实际未运行**，见下
+ESP       已按请求启用（sampling.experimental_speed_projection=true）
 推理      reasoning_effort=medium，budget 4096，close_retry=true
 采样      temperature 1.0 / top_p 0.95 / top_k 20
-env       ROUTE_TAIL_SKIP=0  RESIDENT_HEADROOM_GIB=6  ADAPT_OVERLAP=1
+env       ROUTE_TAIL_SKIP=0  RESIDENT_HEADROOM_GIB=2  ADAPT_OVERLAP=1
 ```
+
+> ⚠️ **`--batch-mtp` 在 args 里，但引擎判定为 OFF。** 双卡层拆分 + `--batch` 默认走流水线分组，而流水线分组**不跑各槽草稿**（引擎启动日志有明确 WARNING）。所有请求的草稿计数都是 `drafts accepted 0 of 0`，即 `--spec 4` / `--mtp` 当前零贡献。要启用须加 `--batch-groups 1` 或 `STRATA_BATCH_MTP_SERIAL=1`，但引擎实测 4 路并发下流水线比串行 MTP 快 25–30%。详见《压测文档》§9.3。
 
 ### 资源
 
 ```
-显存      CUDA0 37.8 / 40 GB（仅剩 3.2 GB）  CUDA1 31.2 / 40 GB
-内存      98.8 GB 总，MemAvailable 57.1 GB，Mlocked 0，Cached 48.8 GB
-引擎 RSS  39.3 GB（专家走文件映射，不再常驻匿名内存）
+显存      CUDA0 27.4 / 40 GB   CUDA1 33.5 / 40 GB
+内存      98.8 GB 总，MemAvailable 31.3 GB，Mlocked 0
+引擎 RSS  专家走 mmap，具体值随 --ple-io 模式变化
 swap      8 GB，基本未用
 ```
 
@@ -126,7 +128,10 @@ swap      8 GB，基本未用
 | `STRATA_ADAPT_OVERLAP*` 是否在双卡生效 | **存疑**（`--adapt-async` 注明 one GPU） | 同上；注意 run-to-run 不 bit-exact |
 | `STRATA_ROUTE_TAIL_SKIP=0` 的代价 | **已知 13-16% 解码**，本机未量化 | 0 ↔ 7 对比，并抽查答案质量 |
 | `reasoning_effort` 开/关的性能差异 | **未测** | `none` vs `medium`，同一语料 |
-| `temperature 1.0` 对投机接受率的压制 | **未测** | temp 0 vs 1.0 的 `Spec. Accept Rate` |
+| `temperature 1.0` 对投机接受率的压制 | **未测**（且当前 MTP 未运行，测不出来） | temp 0 vs 1.0 的 `Spec. Accept Rate` |
+| `--batch-mtp` 是否生效 | **已证实未生效**（`drafts accepted 0 of 0`） | 加 `--batch-groups 1` 或 `STRATA_BATCH_MTP_SERIAL=1` |
+| 8 槽位的延迟代价 | **已测**：并发 8 时 TPOT 94.7ms（单流 10.6 tok/s） | 见压测文档 §9.2 |
+| 自然文本是否有帮助 | **已测**：没有。TPOT 与随机语料持平，因 MTP 未运行 | 见压测文档 §9.4 |
 
 ---
 
