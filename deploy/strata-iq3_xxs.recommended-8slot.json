@@ -1,0 +1,74 @@
+{
+  "_说明": "高并发变体（短提示 / 问答场景）。只改三处：parallel 4→8、--batch 4→8、会话缓存槽位 4→8。B 轮（自然中文 in≈800）并发 8 聚合 89.3 tok/s（4 槽为 80.7）。",
+  "_代价": "长提示不要用这套：A 轮（in=2000）并发 8 聚合从 59.5 掉到 56.4，TPOT 从 45.89 ms 涨到 94.71 ms。",
+  "_注意": [
+    "8 槽每槽 session 占 0.51 GiB × 2 卡；--kv-resident 32768 必须保留，否则每槽涨到 1.86 GiB，显存会被推到 99% 并挤掉专家缓存。",
+    "会话缓存 8 槽 + 16384 MiB 会把可用内存压到 20 GB 以下；单轮基准测试建议把 --conversation-cache-mib 设小些（注意设 0 不等于关闭）。"
+  ],
+
+  "exe": "/data/Strata/engine-cuda12/strata",
+  "cwd": "/data/Strata",
+  "tokenizer": "/data/Strata-data/packs/iq3_xxs/tokenizer",
+  "model_name": "qwen3.8-flash-next-iq3_xxs",
+  "log": "/data/Strata/strata-iq3_xxs.log",
+  "lib_dirs": [
+    "/usr/local/cuda/bin",
+    "/usr/local/cuda/lib64"
+  ],
+  "port": 8080,
+  "cuda": 12,
+  "gpu": [0, 1],
+  "gpus_asked": true,
+  "layer_split": "auto",
+  "host": "0.0.0.0",
+
+  "args": [
+    "--pack", "/data/Strata-data/packs/iq3_xxs",
+    "--native", "/data/Strata-data/models/IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+    "--ple-gguf", "/data/Strata-data/models/IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00002-of-00002.gguf",
+    "--expert-profile", "/data/Strata/data/expert-profile.bin",
+    "--expert-cache", "auto",
+    "--prefill", "auto:32768",
+    "--spec", "4",
+    "--spec-min-p", "0.5",
+    "--mtp", "/data/Strata-data/mtp/rt",
+    "--max-context", "262144",
+    "--resident-experts",
+    "--conversation-cache-mib", "16384",
+    "--conversation-cache-slots", "8",
+    "--conversation-cache-min-tokens", "4096",
+    "--conversation-cache-park-gain", "2048",
+    "--kv-resident", "32768",
+    "--kv", "int8",
+    "--ple-io", "mmap",
+    "--control-vector-scaled", "/data/Strata/data/experimental-speed-projection/Qwen3.8-Flash-Next-experimental-speed-projection.gguf:1.0",
+    "--control-vector-layer-range", "4", "44",
+    "--cvec-mode", "project",
+    "--cvec-dir", "per-layer",
+    "--batch", "8"
+  ],
+
+  "env": {
+    "STRATA_ROUTE_TAIL_SKIP": "0",
+    "STRATA_RESIDENT_HEADROOM_GIB": "2",
+    "MALLOC_MMAP_THRESHOLD_": "16777216",
+    "STRATA_ADAPT_OVERLAP": "1",
+    "STRATA_ADAPT_OVERLAP_RESIDENT": "1"
+  },
+
+  "reasoning_effort": "medium",
+  "reasoning_budget_tokens": 4096,
+  "reasoning_close_retry": true,
+  "fit_max_tokens": true,
+
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "experimental_speed_projection": true
+  },
+
+  "parallel": 8,
+  "api_key": "REPLACE_WITH_API_KEY",
+  "open_browser": false
+}

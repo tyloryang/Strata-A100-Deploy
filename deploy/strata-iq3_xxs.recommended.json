@@ -1,0 +1,76 @@
+{
+  "_说明": "最优配置（长提示 / 文档分析场景）。实测最优版本 v6：A 轮并发 8 聚合 59.5 tok/s、TPOT 45.89 ms；单请求解码约 110 tok/s。来源见 docs/部署文档.md §12.9。",
+  "_注意": [
+    "api_key 必须替换成真实值（48 hex），文件权限设为 600，不要提交进版本库。",
+    "所有路径都是容器内绝对路径，要求挂载点仍是 /data。",
+    "--batch-mtp 故意不加：双卡层拆分下 --batch 默认走流水线分组，流水线不跑各槽草稿，加了也会被引擎关掉。要生效须配 --batch-groups 1 或 STRATA_BATCH_MTP_SERIAL=1，但串行窗口实测低 16~20%。",
+    "layer_split 保持 auto（解析为 24）。强制 28 实测无收益也无害。",
+    "STRATA_ROUTE_TAIL_SKIP 取 0。官方标称改 7 可 +13~16% 解码，但本机未做成单变量测试。"
+  ],
+
+  "exe": "/data/Strata/engine-cuda12/strata",
+  "cwd": "/data/Strata",
+  "tokenizer": "/data/Strata-data/packs/iq3_xxs/tokenizer",
+  "model_name": "qwen3.8-flash-next-iq3_xxs",
+  "log": "/data/Strata/strata-iq3_xxs.log",
+  "lib_dirs": [
+    "/usr/local/cuda/bin",
+    "/usr/local/cuda/lib64"
+  ],
+  "port": 8080,
+  "cuda": 12,
+  "gpu": [0, 1],
+  "gpus_asked": true,
+  "layer_split": "auto",
+  "host": "0.0.0.0",
+
+  "args": [
+    "--pack", "/data/Strata-data/packs/iq3_xxs",
+    "--native", "/data/Strata-data/models/IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+    "--ple-gguf", "/data/Strata-data/models/IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00002-of-00002.gguf",
+    "--expert-profile", "/data/Strata/data/expert-profile.bin",
+    "--expert-cache", "auto",
+    "--prefill", "auto:32768",
+    "--spec", "4",
+    "--spec-min-p", "0.5",
+    "--mtp", "/data/Strata-data/mtp/rt",
+    "--max-context", "262144",
+    "--resident-experts",
+    "--conversation-cache-mib", "16384",
+    "--conversation-cache-slots", "4",
+    "--conversation-cache-min-tokens", "4096",
+    "--conversation-cache-park-gain", "2048",
+    "--kv-resident", "32768",
+    "--kv", "int8",
+    "--ple-io", "mmap",
+    "--control-vector-scaled", "/data/Strata/data/experimental-speed-projection/Qwen3.8-Flash-Next-experimental-speed-projection.gguf:1.0",
+    "--control-vector-layer-range", "4", "44",
+    "--cvec-mode", "project",
+    "--cvec-dir", "per-layer",
+    "--batch", "4"
+  ],
+
+  "env": {
+    "STRATA_ROUTE_TAIL_SKIP": "0",
+    "STRATA_RESIDENT_HEADROOM_GIB": "2",
+    "MALLOC_MMAP_THRESHOLD_": "16777216",
+    "STRATA_ADAPT_OVERLAP": "1",
+    "STRATA_ADAPT_OVERLAP_RESIDENT": "1"
+  },
+
+  "reasoning_effort": "medium",
+  "reasoning_budget_tokens": 4096,
+  "reasoning_close_retry": true,
+  "fit_max_tokens": true,
+
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "experimental_speed_projection": true
+  },
+
+  "parallel": 4,
+  "api_key": "REPLACE_WITH_API_KEY",
+  "open_browser": false
+}
