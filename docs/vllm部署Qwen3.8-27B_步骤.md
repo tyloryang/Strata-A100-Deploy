@@ -12,6 +12,7 @@
 |---|---|
 | 模型下载（51.77 GiB / 55.6 GB，18 个分片） | **已完成并校验 32/32 通过**，落在 `F:\models\Qwen3.8-27B`，详见 §2 |
 | 校验清单 | `F:\models\Qwen3.8-27B.sha256`（sha256sum 格式，可直接 `-c`） |
+| 镜像 | 走**渡渡鸟镜像站**（`swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.27.1`），命令在 §5，**未拉取** |
 | 目标机部署 | **未执行**（按你的要求） |
 | 与 Strata 的对比压测 | **未执行**，方案见 §9 |
 
@@ -124,38 +125,102 @@ free -g
 
 ---
 
-## 5. 镜像
+## 5. 镜像（v0.27.1，走渡渡鸟镜像站）
 
-vLLM 对 Qwen3.8 有专供镜像 tag，官方 recipe 写的是 **vLLM ≥ 0.17.0**：
+钉 **vLLM v0.27.1**。Docker Hub 在国内直连基本拉不动，走**渡渡鸟镜像同步站**（`docker.aityp.com`），它把镜像同步到华为云 SWR，页面直接给可拉地址。
 
-| 方式 | 命令 | 体积 |
-|---|---|---|
-| 在线（首选） | `docker pull vllm/vllm-openai:qwen38` | 8.6 GB |
-| 在线（固定版本） | `docker pull vllm/vllm-openai:v0.32.0` | 9.8 GB |
-| 离线导入 | 出网机器 `docker save -o vllm-qwen38.tar vllm/vllm-openai:qwen38`，拷过去 `docker load -i vllm-qwen38.tar` | tar 约 8–11 GB |
+### 5.1 为什么 0.27.1 能用（核过源码，不是猜的）
 
-**驱动兼容性要留意**：这台机器是 550.78（对应 CUDA 12.4），而 `qwen38` / `v0.32.0` 这批镜像都是 **cu129 构建**（CUDA 12.9）。CUDA 12.x 的 minor version compatibility 允许高版本运行时跑在低版本驱动上，但并非零风险。加载权重之前先验：
+| 检查项 | 结论 |
+|---|---|
+| `Qwen3_5ForConditionalGeneration` 是否注册 | ✓ v0.27.1 的 `models/registry.py` 里有，挂在 `qwen3_5` 模块 |
+| MTP 投机解码 | ✓ 同文件里有 `Qwen3_5MTP` / `Qwen3_5MoeMTP` |
+| 官方要求的下限 | vLLM ≥ 0.17.0（0.27 高出 10 个小版本，够） |
+| transformers 依赖 | `requirements/common.txt` 写 `>= 5.5.3`；模型要 ≥ 5.8.0。5.8.0 在 2026-05-05 已发布，镜像 2026-08-11 构建，实际装到的大概率 ≥5.8（落地仍要复核，见 5.6） |
+| CUDA 构建 | 0.27.1 发布的都是 **cu129**（CUDA 12.9），与现有 550.78 驱动靠 minor version compatibility，和 `qwen38` tag 同一处境 |
+
+### 5.2 候选 tag
+
+| tag | 镜像 ID | 解压后体积 | 构建日期 | 用途 |
+|---|---|---|---|---|
+| **`v0.27.1`** | `sha256:e0cfcfcb9b86…` | 21.42 GB | 2026-08-11 | **用这个**，0.27 线的最新补丁 |
+| `v0.27.0` | `sha256:62430ad7c682…` | 21.42 GB | 2026-08-10 | 要精确复现 0.27.0 时用 |
+| `qwen38` | `sha256:a0facb04cacc…` | 15.11 GB | 2026-08-11 | 官方 recipe 的专供 tag，同日构建但体积差 6 GB，**不是和 0.27.1 等价的东西**，别混用 |
+| `v0.32.0` | `sha256:bd8a5d7a8774…` | 23.40 GB | 2026-10-18 | 想比"更新内核"时的实验项，不是本次基线 |
+
+### 5.3 拉取（一条命令 + retag）
 
 ```bash
-docker run --rm --gpus '"device=0,1"' vllm/vllm-openai:qwen38 bash -lc \
-  'nvidia-smi --query-gpu=name,driver_version --format=csv && python -c "import torch;print(torch.cuda.is_available(), torch.version.cuda)"'
+docker pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.27.1
+docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.27.1 \
+            vllm/vllm-openai:v0.27.1
 ```
 
-`True` 才往下走。若报驱动过旧：① 换一个 cu124 / cu126 的镜像 tag（Docker Hub 上还有历史 tag）；② 或把驱动升到 575+（会牵动现有 Strata 容器，需单独评估，不要顺手升级）。
+`docker tag` 这步别省：后面 compose / 命令里引的都是短名字，retag 之后换版本只改一行。
 
-**启动前先验 30 秒**（不然你要在 52 GB 权重加载 5 分钟后才发现架构不支持）：
+拉完对一下：
 
 ```bash
-docker run --rm --gpus '"device=0,1"' vllm/vllm-openai:qwen38 bash -lc '
-  python -c "import vllm, transformers; print(\"vllm\", vllm.__version__, \"| transformers\", transformers.__version__)"
+docker image inspect vllm/vllm-openai:v0.27.1 --format '{{.Id}}  {{.Size}}  {{.Architecture}}'
+# 期望：ID 以 e0cfcfcb9b86 开头、约 2.1e10 字节、amd64
+# 多架构清单下 Id 是 amd64 的实际 config digest，不一定逐字符等于上面的 ID，以体积 + 架构为准
+```
+
+### 5.4 镜像站找不到 tag 时
+
+镜像站**按需同步**：页面有「添加镜像」，提交 `docker.io/vllm/vllm-openai:<tag>` 后等它同步。查 tag 在不在：
+
+```
+https://docker.aityp.com/image/docker.io/vllm/vllm-openai:<tag>
+```
+
+返回 200 就是有；没有就走 5.5 的离线路线，别在前端干等。
+
+### 5.5 离线导入（目标机完全不联网时）
+
+```bash
+# 有网机器
+docker pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.27.1
+docker save -o vllm-0271.tar \
+  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.27.1
+sha256sum vllm-0271.tar > vllm-0271.tar.sha256
+
+# 目标机
+sha256sum -c vllm-0271.tar.sha256
+docker load -i vllm-0271.tar
+docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/vllm/vllm-openai:v0.27.1 \
+            vllm/vllm-openai:v0.27.1
+```
+
+`/data` 要留够：镜像解压 21.4 GB + 模型 55.6 GB。
+
+### 5.6 拉完先验三件事（30 秒，别等加载完 55.6 GB 才发现问题）
+
+```bash
+docker run --rm --gpus '"device=0,1"' vllm/vllm-openai:v0.27.1 bash -lc '
+  nvidia-smi --query-gpu=name,driver_version --format=csv
+  python -c "import torch;print(\"cuda\", torch.cuda.is_available(), torch.version.cuda)"
+  python -c "import vllm, transformers;print(\"vllm\", vllm.__version__, \"| transformers\", transformers.__version__)"
   python -c "from vllm.model_executor.models.registry import ModelRegistry as R; \
-print(\"Qwen3_5ForConditionalGeneration\",
-      any(k in str(R.get_supported_archs()) for k in [\"Qwen3_5\"]))"
+print(\"qwen3_5 registered:\", \"Qwen3_5ForConditionalGeneration\" in str(R.get_supported_archs()))"
 '
 ```
 
-- `vllm` 应 ≥ 0.17.0；`transformers` 应 ≥ 5.8.0（`config.json` 就是这个版本写的，缺了会在 processor 上炸）
-- 第二条打印 `True` 才说明这个镜像认识 qwen3_5 系列。**别在镜像里 `pip install -U transformers`**，vLLM 对 transformers 版本很敏感。
+四条都要过：
+
+1. **驱动**：`cuda True`；报驱动过旧就换更早的 cu 构建，或评估升驱动（会牵动现有 Strata 容器，别顺手升）
+2. **版本**：`vllm 0.27.1`
+3. **transformers ≥ 5.8.0**：低了就在容器里补 `pip install -U "transformers>=5.8.0"`（0.27 只要求 ≥5.5.3，理论不冲突；纯文本服务加 `--language-model-only` 会绕开 Qwen3-VL 的 processor，这条依赖就没那么硬）
+4. **`qwen3_5 registered: True`**：打印 False 说明拿到的不是这个镜像，回 5.2 换 tag
+
+### 5.7 拉取常见问题
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `401 Unauthorized` | 个别 namespace 要求登录 | 站内注册后 `docker login swr.cn-north-4.myhuaweicloud.com`；或 `docker login docker.aityp.com` 后按页面命令拉 |
+| `manifest unknown` / `not found` | 该 tag 没同步 | 提交「添加镜像」，或退 `v0.27.0` |
+| 拉到一半卡死 | SWR 限速 | 重试，`docker pull` 会续传；别中途 `docker system prune` |
+| 拉完看不到短名字 | 只有 SWR 长名 | 就是没做 retag，按 5.3 补一条 |
 
 ---
 
@@ -365,7 +430,7 @@ curl -s $H/metrics | grep -E 'vllm:(num_requests_running|gpu_cache_usage_perc|sp
 
 | 风险 | 触发信号 | 处置 |
 |---|---|---|
-| 架构不支持 | 启动即报 `Qwen3_5ForConditionalGeneration is not supported` | 换 `vllm/vllm-openai:qwen38` 或 ≥0.17.0 的镜像；别升 transformers 硬凑 |
+| 架构不支持 | 启动即报 `Qwen3_5ForConditionalGeneration is not supported` | 回 §5 核对拿到的是不是 `v0.27.1`；0.27 已有该架构，报这个错基本就是拉错镜像 |
 | fp8 KV 起不来 | `kv_cache_dtype` 相关报错 / 启动中断 | 退 `--kv-cache-dtype auto` **并把 `--max-model-len` 降到 131072** |
 | CUDA graph OOM | 启动末段 `torch.OutOfMemoryError` in graph capture | 加 `--enforce-eager`，或 `--language-model-only`，或降 `--gpu-memory-utilization` 到 0.88 |
 | 加载太慢 / 内存压力 | 加载 5 分钟以上，`MemAvailable` 掉到 1–2 GB | 属正常（mmap + page cache 可回收），但别同时压测；必要时 `--load-format safetensors` |
@@ -411,7 +476,7 @@ curl -s $H/metrics | grep -E 'vllm:(num_requests_running|gpu_cache_usage_perc|sp
 
 | 日志关键字 | 原因 | 处理 |
 |---|---|---|
-| `Qwen3_5ForConditionalGeneration is not supported` | 镜像太老 | 换 `vllm/vllm-openai:qwen38` 或 ≥0.17.0 |
+| `Qwen3_5ForConditionalGeneration is not supported` | 拿到的镜像不对（0.27.1 是支持的） | 按 §5.6 第 4 条验证，换回 `vllm/vllm-openai:v0.27.1` |
 | `transformers version ... is too old` / processor 报错 | transformers < 5.8.0 | 换镜像，别手动 pip 升级 |
 | `No available memory for the cache blocks` | KV 池为 0 | 降 `--max-model-len`，或 `--kv-cache-dtype auto`，或降 `--max-num-seqs` |
 | `torch.OutOfMemoryError` 出现在 `capture` 阶段 | CUDA graph 捕获溢出 | 加 `--enforce-eager` / `--language-model-only` |
@@ -424,12 +489,12 @@ curl -s $H/metrics | grep -E 'vllm:(num_requests_running|gpu_cache_usage_perc|sp
 ## 附录 C：docker 起法（等价于上面 A/B/C 任一命令）
 
 ```bash
-docker run -d --name vllm-qwen38 \
+docker run -d --name vllm-0271 \
   --gpus '"device=0,1"' --ipc=host --shm-size 16g \
   -p 8000:8000 \
   -v /data/models/Qwen3.8-27B:/models/Qwen3.8-27B:ro \
   -e VLLM_USE_RUST_FRONTEND=1 \
-  vllm/vllm-openai:qwen38 \
+  vllm/vllm-openai:v0.27.1 \
   --model /models/Qwen3.8-27B \
   --served-model-name Qwen3.8-27B-BF16-FP8KV \
   --tensor-parallel-size 2 \
@@ -444,7 +509,7 @@ docker run -d --name vllm-qwen38 \
   --api-key "$VLLM_API_KEY"
 
 # 日志（KV 池那行在这里）
-docker logs -f vllm-qwen38
+docker logs -f vllm-0271
 ```
 
 权重目录挂 `:ro`，避免容器里误写。
