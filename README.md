@@ -1,37 +1,48 @@
 # Strata + Qwen3.8-Flash-Next IQ3_XXS · 2×A100 离线部署
 
-在**完全无外网**的机器上用一份 198 GB 离线包部署 Strata 引擎 + Qwen3.8-Flash-Next IQ3_XXS（双卡层拆分、262144 上下文、API Key 鉴权、Web 页面），并复现到新机器。
+在**完全无外网**的机器上，用一份离线包部署 Strata 引擎 + Qwen3.8-Flash-Next IQ3_XXS：双卡层拆分、262144 上下文、API Key 鉴权、Web 页面，并能复现到新机器。
 
-本仓库是**实际执行记录 + 可复用脚本 + 复现手册**，不是原始离线包。
+本仓库是**实际执行记录 + 可复用配置和脚本 + 复现手册**，不是离线包本身。
 
-> 📚 **完整文档集见 [`docs/README.md`](docs/README.md)**（索引 + 当前状态快照 + 已知未验证项）。
-> 下文§一的表格是**首次部署时**的结论；此后配置已调整为 `parallel=4`、`--prefill auto:32768`、`--ple-io mmap`，显存占用与吞吐基线相应变化。**当前状态以 `docs/README.md` 的快照为准。**
+> 📚 文档索引见 [`docs/README.md`](docs/README.md)；**每个参数的含义见 [`docs/参数详解.md`](docs/参数详解.md)**。
+> ⚠️ 测试机已于 2026-11-02 23:40 前后回收，文中所有实测数据都来自那台机器。
+> 🗂 IQ3_S、Coder、vLLM 27B 等**其他模型的内容都未部署**，单独放在 [`待实施-其他模型/`](待实施-其他模型/README.md)，不和本 README 及 `docs/` 的结论混用。
+> 📝 2026-11-03 的整理改了什么，见 [`整理说明.md`](整理说明.md)。
 
 ---
 
-## 一、已验证的结论
+## 一、结论速览
 
 | 项 | 结果 |
 | --- | --- |
 | 离线包完整性 | 5 个 tar `sha256sum -c` 全过；2 个 GGUF 与固定值逐字一致 |
-| 部署 | 传输完成 → 服务 `ready:` 用 **8 分钟**；`setup.sh` 断网 49 秒跑完，零网络请求 |
-| 双卡 | `layer split across GPUs [0, 1] (auto)`，显存 26.7 + 32.8 GiB |
-| 速度 | 解码 **106–123 tok/s**（云主机 A100-80G 参考 112）；1460 token 预填 1335 tok/s |
-| 长上下文 | 14.4 万 token 请求 27.7 秒返回，预填 **5271 tok/s** |
-| 资源 | 内存 45/94 GB，swap 仅 5–20 MB，两卡余量约 22 GiB |
-| 停启 | `stop` 13 秒释放显存；`start` 65 秒恢复 healthy |
-| 公网 | `http://<公网IP>:13270/health` → 200（移动线）；电信线 `<公网IP-电信>:13270` 同样 200 |
+| 部署 | 传输完成到服务 `ready:` 用 **8 分钟**；`setup.sh` 断网 49 秒跑完，零网络请求 |
+| 双卡 | 层拆分 auto → 24：CUDA0 跑 0–23 层，CUDA1 跑 24–47 层；**全部 24576 个专家都在显存** |
+| 单请求解码 | 约 **105–111 tok/s**（TPOT 约 9 ms） |
+| 并发吞吐 | 长提示（2000 token）4 槽并发 8：聚合 **59.5 tok/s**；短提示（800 token）8 槽并发 8：聚合 **89.3 tok/s** |
+| 长上下文 | 200K 提示 TTFT 39 秒，预填约 5100 tok/s；越界 400，不截断 |
+| 停启 | `stop` 13 秒释放显存；`up -d` 65 秒 healthy |
+| 公网 | `http://<公网IP>:13270/health` → 200 |
 
-## 二、端口三层链路
+## 二、推荐配置
+
+| 场景 | 配置文件 | 实测 |
+|---|---|---|
+| 长提示 / 文档分析（**默认**） | [`deploy/strata-iq3_xxs.recommended.json`](deploy/strata-iq3_xxs.recommended.json)（4 槽） | v6：A 轮并发 8 聚合 59.5 tok/s，TPOT 45.9 ms |
+| 短提示 / 高并发问答 | [`deploy/strata-iq3_xxs.recommended-8slot.json`](deploy/strata-iq3_xxs.recommended-8slot.json)（8 槽） | v5：B 轮并发 8 聚合 89.3 tok/s，TPOT 翻倍 |
+
+两份只差 `parallel`、`--batch`、`--conversation-cache-slots` 三处。用之前替换 `api_key` 并 `chmod 600`。
+
+> ⚠️ **两份配置都开着 ESP（实验性速度投影）。** 官方文档说明它是**拒答方向投影**：模型拒答会大幅减少，等于去掉一层安全行为；它不提速，反而每 token 慢 0.2–0.4%。v6/v5 的数据是在开启状态下测的，所以配置暂时保持原样。**如果当初开它是为了提速，请关掉**，方法见[参数详解 §2.7](docs/参数详解.md#27-esp-控制向量先读这一节)。
+
+## 三、端口三层链路
 
 ```
 公网 13270  →  VM 8800  →  容器 8080
-  平台转发      compose published    容器内监听（0.0.0.0:8080）
+  平台转发      compose 发布     容器内监听（0.0.0.0:8080）
 ```
 
-平台只转发预留端口：`13270→8800`、`13271→8801` … `13275→8805`。**发布端口必须落在这 6 个里**，否则公网不通——与镜像、容器、Strata 都无关。
-
-访问入口：
+平台只转发预留端口：`13270→8800`、`13271→8801` … `13275→8805`。**宿主机发布端口必须是这 6 个之一**，否则公网不通，和镜像、容器、Strata 都无关。
 
 | 用途 | 地址 |
 | --- | --- |
@@ -40,11 +51,9 @@
 | Anthropic 兼容 | `http://<公网IP>:13270/v1/messages` |
 | 健康检查 | `http://<公网IP>:13270/health` |
 
-> `/v1` 是 API 前缀，不是页面；浏览器直接开 `/v1` 会 404，网页在 `/`。
+`/v1` 是 API 前缀，不是页面；浏览器直接开 `/v1` 会 404，网页在 `/`。`<公网IP>`、`<内网IP>`、`<SSH端口>` 都是占位符，本仓库不记录真实地址。
 
-> **文档中的地址说明**：`<公网IP>`、`<内网IP>`、`<SSH端口>` 是占位符，实际值按各自环境填写；本仓库不记录任何真实公网地址、内网地址或端口。
-
-## 三、测试环境
+## 四、测试环境
 
 | 项 | 值 |
 | --- | --- |
@@ -52,90 +61,93 @@
 | 系统 | CentOS 7.9 / 内核 3.10.0-1160 |
 | GPU | 2 × A100-SXM4-40GB（sm80，ECC 开，MIG 关，**NVLink 不可用**，GPU 间走 PCIe） |
 | 驱动 | 550.78 / CUDA 12.4 |
+| 引擎 | Strata 0.1.45（`engine-cuda12`） |
 | CPU / 内存 | 32 vCPU Xeon 8368Q / 94 GiB |
-| 磁盘 | `/data` = 1 TB ext4（实测约 1.4 GB/s 顺序读写） |
+| 磁盘 | `/data` = 1 TB ext4（约 1.4 GB/s 顺序读写） |
 | Docker | 20.10.17 + nvidia runtime；compose v2.29.7（独立二进制） |
-| 网络 | 单网口 libvirt NAT，**无 RDMA/IB**；NCCL 2 卡 all-reduce 9.3 GB/s |
 
-## 四、仓库结构
+## 五、仓库结构
 
 ```
-docs/                  完整文档集，索引见 docs/README.md
-  README.md            文档索引、状态快照、已知未验证项
-  部署文档.md           校验→解包→配置→启动→验收→运维→故障→重装恢复
-  压测文档.md           方法学、62 个用例实测、方法学缺陷、执行手册、实验计划
-  引擎参数速查.md        每个参数的引擎原文含义、当前值与取舍
-  运维卡片.md           单页：启停、接口、改配置、故障速查
-  目标机迁移清单.md      换机器时的差异项与调整
-  知识库摘要.md          LLM 推理基础设施知识底座
-  执行时间线.md          逐阶段命令、原始输出、耗时、故障复盘
-  vllm部署Qwen3.8-27B_步骤.md  vLLM 对照部署清单（未执行）
-  归档/                已被取代的早期文档，带失效说明
-deploy/
-  docker-compose.yml   生产配置（双卡、健康检查、init、发布端口）
-scripts/               运维与验证脚本，见下表
-tools/
-  tar_peek.py          读 tar 头（支持 GNU base-256 大文件）
+README.md                       本文件
+整理说明.md                      2026-11-03 整理改了什么、更正了哪些说法
+deploy/                         ── IQ3_XXS 生产部署物 ──
+  docker-compose.yml            compose 文件（每个字段带注释）
+  .env.example                  compose 环境变量样例
+  strata-iq3_xxs.recommended.json        推荐配置：4 槽，长提示
+  strata-iq3_xxs.recommended-8slot.json  变体：8 槽，短提示
+docs/                           ── IQ3_XXS 文档 ──（索引见 docs/README.md）
+  参数详解.md                    每个参数：含义、本机值、是否生效、来源
+  部署文档.md                    从零到可服务的完整流程；§12 是 14 个版本的实测汇总
+  压测文档.md                    方法学、全部实测、缺陷、执行手册、实验计划
+  运维卡片.md                    单页速查
+  目标机迁移清单.md               IQ3_XXS 换机（未执行）
+  执行时间线.md                  逐阶段原始记录
+  知识库摘要.md                  参考资料
+  归档/                         已被取代的早期文档
+scripts/                        部署、验收、压测、运维脚本（说明见 scripts/README.md）
+tools/                          tar_peek.py（读 tar 头）、rexec.py（远程批量执行）
+待实施-其他模型/                  ⚠️ 未部署、未验证，和上面的内容隔离
+  IQ3_S.md                      Flash-Next IQ3_S：已下载，缺 pack
+  Coder-IQ1_M.md                Flash-Next Coder：已下载，缺 pack
+  vLLM-Qwen3.8-27B.md           vLLM 对照部署：步骤清单，一条命令未执行
 ```
-
-## 五、脚本
-
-| 脚本 | 用途 |
-| --- | --- |
-| `preflight.sh` | 部署前检查：端口、容器、内存、SELinux、磁盘、GPU |
-| `watch_upload.sh` / `start_watch.sh` | 上传监控（比对期望字节数，写状态文件） |
-| `verify_offline.sh` | 5 个 tar + 2 个 GGUF 的 sha256 校验并计时 |
-| `extract_model.sh` / `start_extract.sh` | 解包模型 tar 并校验两片 GGUF |
-| `setup_offline.sh` | 断网生成双卡配置（Key 从文件读，不进命令行） |
-| `start_strata.sh` | docker run 方式启动（compose 不可用时的退路） |
-| `collect_evidence.sh` | 收集 nvidia-smi / free / docker / 日志 / 配置（Key 打码） |
-| `accept.sh` | 验收：health、401/200、推理、slots |
-| `web_check.sh` | Web 页面与静态资源、一次真实对话 |
-| `speed_test.sh` | 短/长提示的解码与预填速度、草稿命中 |
-| `long_context.sh` | 14 万 token 长上下文验证 |
-| `api_surface.sh` | Anthropic 端点、并发排队行为 |
-| `restart_test.sh` / `compose_lifecycle.sh` | 停启与 compose 生命周期计时 |
-| `port8800.sh` / `diag_port.sh` | 切换发布端口、端口三层取证 |
-| `recover.sh` / `rmf_test.sh` | 异常恢复、`rm -f` 卡死复现 |
 
 ## 六、快速开始（新机器）
 
 ```bash
-# 0) 前置：驱动 ≥535、docker + nvidia runtime、compose 二进制已预置
+# 0) 前置：驱动 ≥ 525、docker + nvidia runtime、compose 二进制已预置
 # 1) 传包并校验（约 30–60 分钟，取决于带宽）
 cd /data && sha256sum -c SHA256SUMS-tars.txt
 
 # 2) 解包
 B=/data/qwen-strata
+mkdir -p $B/Strata-data/models/IQ3_XXS
 tar -xf strata-src.tar -C $B && tar -xf tools.tar -C $B
 tar -xf data-packs.tar -C $B/Strata-data && tar -xf data-mtp.tar -C $B/Strata-data
-mkdir -p $B/Strata-data/models/IQ3_XXS
 tar -xf Qwen3.8-*-00002-of-00002.tar -C $B/Strata-data/models/IQ3_XXS
 tar -xf gguf_done.tar -C $B/Strata-data/models/IQ3_XXS
 docker load -i strata-qwen38-cuda12-1.0.tar
 
-# 3) 生成配置（API Key 存文件，不进命令行）
+# 3) Key 存文件，不进命令行
 install -d -m 700 /etc/strata && openssl rand -hex 24 > /etc/strata/api_key && chmod 600 /etc/strata/api_key
-bash scripts/setup_offline.sh     # 注意把里面的 BASE/镜像名改成实际值
 
-# 4) 用 compose 起
+# 4) 断网跑 setup 生成基础配置（脚本里的 BASE / 镜像名按实际改；不要加 --calibrate）
+bash scripts/setup_offline.sh
+
+# 5) 用推荐配置覆盖 setup 生成的配置，填入 Key
+cp deploy/strata-iq3_xxs.recommended.json $B/Strata/strata-iq3_xxs.json
+python3 - <<'EOF'
+import json; p='/data/qwen-strata/Strata/strata-iq3_xxs.json'
+c=json.load(open(p)); c['api_key']=open('/etc/strata/api_key').read().strip()
+json.dump(c,open(p,'w'),ensure_ascii=False,indent=2)
+EOF
+chmod 600 $B/Strata/strata-iq3_xxs.json
+
+# 6) 用 compose 起
+mkdir -p /data/compose/strata && cp deploy/docker-compose.yml /data/compose/strata/
+cp deploy/.env.example /data/compose/strata/.env
 cd /data/compose/strata && docker-compose up -d && docker-compose ps
+
+# 7) 验收
+bash scripts/accept.sh
 ```
 
-分阶段的门禁与失败退路见 `docs/目标机迁移清单.md`；完整流程见 `docs/部署文档.md`。
+分阶段的门禁与失败退路见 [`docs/部署文档.md`](docs/部署文档.md)；换机器见 [`docs/目标机迁移清单.md`](docs/目标机迁移清单.md)。
 
-## 七、三个容易踩的坑
+## 七、四个容易踩的坑
 
-1. **不要对运行中的容器 `docker rm -f`** —— 引擎持有 CUDA 上下文，SIGKILL 后要拆 GPU 上下文，进程进入不可中断状态，docker 等不到退出事件（`is zombie` / `did not receive an exit event`），容器卡在中间态、服务中断。用 `docker-compose stop` → `down` → `up -d`。加 `init: true` 也不解决。
-2. **容器日志里的 `127.0.0.1:8080` / `172.x.x.x:8080` 不是访问地址** —— 前者是 `host=0.0.0.0` 时写死的提示，后者是容器桥接 IP（重建网络还会变）。
-3. **发布端口必须在平台转发列表里** —— 否则本机全部正常、公网永远不通。
+1. **不要对运行中的容器 `docker rm -f`。** 引擎持有两张卡的 CUDA 上下文，SIGKILL 后要拆 GPU 上下文，进程进入不可中断状态，docker 等不到退出事件（`is zombie` / `did not receive an exit event`），服务中断。用 `docker-compose stop` → `down` → `up -d`。加 `init: true` 也不解决。
+2. **容器日志里的 `127.0.0.1:8080` / `172.x.x.x:8080` 不是访问地址。** 前者是 `host=0.0.0.0` 时写死的提示，后者是容器桥接 IP。
+3. **发布端口必须在平台转发列表里**，否则本机全部正常、公网永远不通。
+4. **离线机上不要跑 `setup.sh --calibrate`。** 它会删掉 `.venv` 再联网重装，离线装不回来。`/data/strata-src.tar` 是唯一一份完整 venv 的副本，不能删。
 
 ## 八、仓库不含什么
 
-- **离线包本体**（198 GB tar/GGUF）与模型权重 —— 体积原因，走对象存储/内网分发。
-- **任何密钥**：`/etc/strata/api_key`、配置文件里的 `api_key`、SSH 凭据均未入库；配置样例已打码。
+- **离线包本体**（约 137 GB tar / GGUF）与模型权重：体积原因，走对象存储或内网分发。
+- **任何密钥**：`/etc/strata/api_key`、配置里的 `api_key`、SSH 凭据都没有入库，配置样例里是占位符。
 - 云主机账号、密码、私钥文件。
 
 ## 九、许可与来源
 
-Strata 引擎与 Qwen3.8-Flash-Next 权重分别遵循其上游许可（Strata 仓库、Qwen Community License 1.0）。本仓库只含部署实践与脚本。
+Strata 引擎与 Qwen3.8-Flash-Next 权重分别遵循其上游许可（Strata 仓库 MIT、Qwen Community License 1.0）。本仓库只含部署实践与脚本。参数解释引用了 [Strata 官方仓库](https://github.com/Niko1221/Strata) 的文档与源码。

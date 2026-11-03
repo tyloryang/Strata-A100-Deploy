@@ -2,7 +2,8 @@
 # 速度与内存观测：短提示 400 token、同提示复测（缓存）、长提示 2000 token 预填
 KEY=$(cat /etc/strata/api_key)
 IP=${IP:-127.0.0.1}
-URL="http://$IP:8080/v1/chat/completions"
+PORT=${PORT:-8800}   # 宿主机发布端口（compose: 8800 -> 容器 8080）
+URL="http://$IP:$PORT/v1/chat/completions"
 
 call() {
   local label="$1" prompt="$2" maxtok="$3"
