@@ -5,7 +5,7 @@
     "8 槽每槽会话状态占 0.51 GiB × 2 卡；--kv-resident 32768 必须保留，否则每槽涨到 1.86 GiB，显存被推到 99% 并把专家挤出显存（v10 实测）。",
     "--kv-resident 让每个槽位的完整 KV 放在锁页内存（官方约 13.7 KB/token，262144 上下文约 3.6 GB/槽），8 槽比 4 槽多占不少内存；加上会话缓存 16384 MiB，可用内存可能压到 20 GB 以下，要盯 free -h。",
     "单轮基准测试建议把会话缓存关小（本机观察到 --conversation-cache-mib 0 仍会停放会话，不能指望设 0 就关掉）。",
-    "其余注意事项与 strata-iq3_xxs.recommended.json 相同（ESP、TAIL_SKIP、已删除的 ADAPT_OVERLAP、batch-mtp）。"
+    "其余注意事项与 strata-iq3_xxs.recommended.json 相同（ESP 可选且默认关闭、TAIL_SKIP、已删除的 ADAPT_OVERLAP、batch-mtp）。"
   ],
 
   "exe": "/data/Strata/engine-cuda12/strata",
@@ -65,7 +65,7 @@
     "temperature": 1.0,
     "top_p": 0.95,
     "top_k": 20,
-    "experimental_speed_projection": true
+    "experimental_speed_projection": false
   },
 
   "parallel": 8,
