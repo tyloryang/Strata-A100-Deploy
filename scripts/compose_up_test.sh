@@ -1,8 +1,10 @@
 #!/bin/bash
-# 把现有 docker run 容器切换到 docker-compose 管理，并计时
+# 把现有 docker run 容器切换到 docker-compose 管理，并计时（一次性迁移脚本，测试机上已执行完毕）
 set -u
 LOG=/root/offline_check/compose.log
+mkdir -p "$(dirname "$LOG")"
 IP=${IP:-127.0.0.1}
+PORT=${PORT:-8800}   # 宿主机发布端口（compose: 8800 -> 容器 8080）
 cd /data/compose/strata || exit 1
 exec > >(tee -a "$LOG") 2>&1
 
@@ -11,7 +13,9 @@ echo "-- 现有容器"
 docker ps -a --format '{{.Names}} | {{.Status}} | {{.Ports}}'
 
 echo "-- 删除 docker run 起的同名容器"
-docker rm -f strata
+# 先正常停止（SIGTERM，引擎自己释放 CUDA 上下文），再删除；不要对运行中的容器 docker rm -f
+docker stop -t 120 strata 2>&1 || true
+docker rm strata 2>&1 || true
 
 t0=$(date +%s)
 echo "-- docker-compose up -d"
@@ -30,10 +34,10 @@ echo "-- compose ps（总耗时 $(( $(date +%s) - t0 ))s）"
 docker-compose ps
 
 echo "-- health 端点"
-curl -s --max-time 10 "http://$IP:8080/health"; echo
+curl -s --max-time 10 "http://$IP:$PORT/health"; echo
 
 echo "-- 监听"
-ss -ltnp | grep 8080
+ss -ltnp | grep ":$PORT"
 
 echo "-- 容器配置要点"
 docker inspect strata -f 'restart={{.HostConfig.RestartPolicy.Name}} shm={{.HostConfig.ShmSize}} memlock={{.HostConfig.Ulimits}} devices={{range .HostConfig.DeviceRequests}}{{.Count}}/{{.DeviceIDs}}{{end}}'
@@ -44,7 +48,7 @@ nvidia-smi --query-gpu=index,memory.used --format=csv,noheader
 
 echo "-- 推理冒烟"
 KEY=$(cat /etc/strata/api_key)
-curl -s --max-time 120 "http://$IP:8080/v1/chat/completions" \
+curl -s --max-time 120 "http://$IP:$PORT/v1/chat/completions" \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"x","messages":[{"role":"user","content":"用一句话说明 compose 和 docker run 的区别。"}],"max_tokens":120,"temperature":0,"reasoning_effort":"none"}' \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print("finish:", d["choices"][0]["finish_reason"], "| tok/s:", round(d["timings"]["predicted_per_second"],1)); print(d["choices"][0]["message"]["content"][:100])'

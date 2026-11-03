@@ -1,15 +1,17 @@
 #!/bin/bash
 # 验证 262144 上下文：发一个约 20 万 token 的中文长提示，记录预填耗时
 LOG=/root/offline_check/longctx.log
+mkdir -p "$(dirname "$LOG")"
 exec > >(tee -a "$LOG") 2>&1
 IP=${IP:-127.0.0.1}
+PORT=${PORT:-8800}   # 宿主机发布端口（compose: 8800 -> 容器 8080）
 KEY=$(cat /etc/strata/api_key)
 echo "==== $(date '+%F %T') 长上下文测试"
 
-python3 - "$IP" "$KEY" <<'PY'
+python3 - "$IP" "$KEY" "$PORT" <<'PY'
 import json, os, sys, time, urllib.request
 
-ip, key = sys.argv[1], sys.argv[2]
+ip, key, port = sys.argv[1], sys.argv[2], sys.argv[3]
 N = 9000
 text = "服务器运维手册包括部署、监控、备份、故障排查和安全加固等内容。" * N
 body = {
@@ -22,7 +24,7 @@ body = {
 data = json.dumps(body).encode()
 print(f"prompt chars={len(text):,}  body bytes={len(data):,}")
 req = urllib.request.Request(
-    f"http://{ip}:8080/v1/chat/completions",
+    f"http://{ip}:{port}/v1/chat/completions",
     data=data,
     headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
 )
@@ -46,7 +48,7 @@ except Exception as e:
 PY
 
 echo "-- 之后的状态"
-curl -s --max-time 10 "http://$IP:8080/health"; echo
+curl -s --max-time 10 "http://$IP:$PORT/health"; echo
 free -h | head -2
 nvidia-smi --query-gpu=index,memory.used --format=csv,noheader
 echo "==== $(date '+%F %T') 结束"

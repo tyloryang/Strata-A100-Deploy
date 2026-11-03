@@ -1,7 +1,14 @@
 #!/bin/bash
-# 运行中强制删除容器：验证 init:true 解决僵尸进程导致 rm -f 卡住的问题
+# ⚠️ 危险：复现"运行中 docker rm -f 卡死"的问题，会中断线上服务，容器可能卡住约 5 分钟。
+# 测试机实测结论：init:true 不能解决，运行中 rm -f 仍然 did not receive an exit event。
+# 结论已有，一般不需要再跑；确实要复现时设置 I_KNOW_THIS_BREAKS_SERVICE=1。
 set -u
+if [ "${I_KNOW_THIS_BREAKS_SERVICE:-0}" != 1 ]; then
+  echo "拒绝执行：这个脚本会中断服务。确需复现请设置 I_KNOW_THIS_BREAKS_SERVICE=1" >&2
+  exit 1
+fi
 LOG=/root/offline_check/rmf_test.log
+mkdir -p "$(dirname "$LOG")"
 cd /data/compose/strata || exit 1
 exec > >(tee -a "$LOG") 2>&1
 

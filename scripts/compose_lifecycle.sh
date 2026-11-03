@@ -2,7 +2,9 @@
 # compose 生命周期验证：restart / stop / start / down / up / rm -f
 set -u
 LOG=/root/offline_check/compose_lifecycle.log
+mkdir -p "$(dirname "$LOG")"
 IP=${IP:-127.0.0.1}
+PORT=${PORT:-8800}   # 宿主机发布端口（compose: 8800 -> 容器 8080）
 cd /data/compose/strata || exit 1
 exec > >(tee -a "$LOG") 2>&1
 
@@ -20,12 +22,12 @@ echo "==== $(date '+%F %T') compose 生命周期"
 
 echo "-- 1) restart"
 t0=$(date +%s); docker-compose restart; wait_healthy "$t0"
-curl -s --max-time 5 "http://$IP:8080/health" | head -c 120; echo
+curl -s --max-time 5 "http://$IP:$PORT/health" | head -c 120; echo
 
 echo "-- 2) stop（应释放显存）"
 t0=$(date +%s); docker-compose stop; echo "  stop $(( $(date +%s) - t0 ))s"
 nvidia-smi --query-gpu=index,memory.used --format=csv,noheader
-ss -ltnp | grep -c 8080
+ss -ltnp | grep -c ":$PORT"
 
 echo "-- 3) start"
 t0=$(date +%s); docker-compose start; wait_healthy "$t0"
@@ -40,12 +42,12 @@ echo "-- 5) up -d 恢复"
 t0=$(date +%s); docker-compose up -d; wait_healthy "$t0"
 docker-compose ps
 
-echo "-- 6) down 后立刻 rm -f 残留（验证 init:true 后不再有僵尸）"
+echo "-- 6) down 后再 rm -f 残留（容器已被 down 删除，这一步应立即返回；不要对运行中的容器 rm -f）"
 docker-compose down
 t0=$(date +%s); docker rm -f strata 2>&1; echo "  rm -f $(( $(date +%s) - t0 ))s rc=$?"
 docker ps -a --format '{{.Names}}' | grep -c strata || echo "  已无 strata 容器"
 
 echo "-- 7) 最终恢复服务"
 t0=$(date +%s); docker-compose up -d; wait_healthy "$t0"
-curl -s --max-time 10 "http://$IP:8080/health"; echo
+curl -s --max-time 10 "http://$IP:$PORT/health"; echo
 echo "==== $(date '+%F %T') 结束"

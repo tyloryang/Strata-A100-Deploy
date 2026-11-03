@@ -1,10 +1,11 @@
 #!/bin/bash
 # 部署前检查，输出追加到 /root/offline_check/preflight.log
 L=/root/offline_check/preflight.log
+mkdir -p "$(dirname "$L")"
 exec > >(tee -a "$L") 2>&1
 echo "==== $(date '+%F %T') 部署前检查"
-echo "-- 端口 8080/1309"
-ss -ltnp 2>/dev/null | grep -E ':8080|:1309' || echo "8080/1309 空闲"
+echo "-- 端口 8800（compose 发布端口）/8080"
+ss -ltnp 2>/dev/null | grep -E ':8800|:8080' || echo "8800/8080 空闲"
 echo "-- 运行中的容器"
 docker ps --format '{{.Names}} | {{.Image}} | {{.Ports}}' || true
 echo "-- 内存"

@@ -27,13 +27,16 @@ echo
 echo "== 宿主机所有监听端口"
 ss -ltnp
 echo
-echo "== 探活"
-for u in "http://127.0.0.1:8800/health" "http://127.0.0.1:8800/health" "http://127.0.0.1:8080/health" "http://127.0.0.1:8080/health"; do
+echo "== 探活（宿主机 8800 应为 200；宿主机 8080 不再发布，应为 000）"
+for u in "http://127.0.0.1:8800/health" "http://${BIND_IP:-127.0.0.1}:8800/health" "http://127.0.0.1:8080/health"; do
   printf '%-42s -> ' "$u"
   curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 "$u" || echo "fail"
 done
 echo
-echo "== 容器内监听（读 /proc/net/tcp，十六进制端口）"
+echo "== 容器内探活（容器内 8080 应为 200）"
+docker exec strata curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 http://127.0.0.1:8080/health
+echo
+echo "== 容器内监听（读 /proc/net/tcp，十六进制端口；1F90 = 8080）"
 docker exec strata sh -c 'cat /proc/net/tcp | awk "NR>1 {split(\$2,a,\":\"); print \$4, a[2]}" | sort -u' 2>&1 | head -10
 echo
 echo "== 容器内 config 的 port/host"

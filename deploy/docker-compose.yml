@@ -1,33 +1,38 @@
+# Strata + Qwen3.8-Flash-Next IQ3_XXS 生产 compose 文件
+# 放到 /data/compose/strata/docker-compose.yml，同目录放 .env（见 .env.example）
+# 每个字段的详细解释见 docs/参数详解.md §4
 services:
   strata:
-    image: strata-qwen38:cuda12-1.0
-    container_name: strata
-    restart: unless-stopped
-    init: true
-    command: ['/data/Strata/run-iq3_xxs.sh']
+    image: strata-qwen38:cuda12-1.0          # 离线包里 docker load 进来的镜像
+    container_name: strata                   # 固定名字，脚本都按它找容器
+    restart: unless-stopped                  # 异常退出/宿主机重启后自动拉起，手动 stop 的不拉
+    init: true                               # 回收孤儿进程；注意它不能解决运行中 docker rm -f 卡死
+    command: ['/data/Strata/run-iq3_xxs.sh'] # setup 生成的启动脚本，读 strata-iq3_xxs.json 启动 server
     ports:
       # 宿主 8800 -> 容器 8080；平台已把公网 13270 转发到本机 8800
+      # 平台只转发 8800~8805 这 6 个端口，宿主端口必须落在其中
       - '${BIND_IP}:8800:8080'
     volumes:
-      - '${BASE}:/data'
-    shm_size: 2g
+      - '${BASE}:/data'                      # 配置里的路径都是容器内路径，挂载点必须是 /data
+    shm_size: 2g                             # /dev/shm 大小，docker 默认只有 64MB
     ulimits:
-      memlock:
+      memlock:                               # 允许锁页内存：专家副本、KV 流式、--ple-io ram 都要用
         soft: -1
         hard: -1
-    stop_grace_period: 120s
+    stop_grace_period: 120s                  # stop 时给引擎 120 秒释放两张卡的 CUDA 上下文
     security_opt:
-      - label=disable
+      - label=disable                        # 关闭 SELinux 标签限制，防止挂载目录 Permission denied
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['0', '1']
+              device_ids: ['0', '1']         # 把 0、1 号 GPU 交给容器
               capabilities: [gpu]
     healthcheck:
+      # 容器内探活：/health 返回 "loaded": true 才算健康
       test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1:8080/health | grep -Eq loaded.:.true']
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 300s
+      interval: 30s                          # 每 30 秒探一次
+      timeout: 10s                           # 单次超时
+      retries: 5                             # 连续 5 次失败判 unhealthy
+      start_period: 300s                     # 启动后 300 秒内的失败不计（加载约 65~77 秒）

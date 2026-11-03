@@ -1,7 +1,8 @@
 #!/bin/bash
-# 把宿主发布端口改到 8800（平台已转发 外网13270 -> 内网8800），重建并本地验证
+# 把宿主发布端口改到 8800（平台已转发 外网13270 -> 内网8800），重建并本地验证（一次性迁移脚本，测试机上已执行完毕）
 set -u
 LOG=/root/offline_check/port8800.log
+mkdir -p "$(dirname "$LOG")"
 cd /data/compose/strata || exit 1
 exec > >(tee -a "$LOG") 2>&1
 

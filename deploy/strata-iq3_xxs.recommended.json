@@ -1,11 +1,15 @@
 {
-  "_说明": "最优配置（长提示 / 文档分析场景）。实测最优版本 v6：A 轮并发 8 聚合 59.5 tok/s、TPOT 45.89 ms；单请求解码约 110 tok/s。来源见 docs/部署文档.md §12.9。",
+  "_说明": "推荐配置（长提示 / 文档分析场景，4 槽）。对应实测最优版本 v6：A 轮并发 8 聚合 59.5 tok/s、TPOT 45.89 ms；单请求解码约 110 tok/s。每个参数的含义见 docs/参数详解.md，实测来源见 docs/部署文档.md §12。",
   "_注意": [
-    "api_key 必须替换成真实值（48 hex），文件权限设为 600，不要提交进版本库。",
-    "所有路径都是容器内绝对路径，要求挂载点仍是 /data。",
-    "--batch-mtp 故意不加：双卡层拆分下 --batch 默认走流水线分组，流水线不跑各槽草稿，加了也会被引擎关掉。要生效须配 --batch-groups 1 或 STRATA_BATCH_MTP_SERIAL=1，但串行窗口实测低 16~20%。",
-    "layer_split 保持 auto（解析为 24）。强制 28 实测无收益也无害。",
-    "STRATA_ROUTE_TAIL_SKIP 取 0。官方标称改 7 可 +13~16% 解码，但本机未做成单变量测试。"
+    "api_key 必须替换成真实值（48 位十六进制），文件权限设为 600，不要提交进版本库。",
+    "所有路径都是容器内绝对路径，要求宿主机目录挂载到容器的 /data。",
+    "parallel 与 args 里的 --batch 必须一致：args 已写 --batch 时 server 不再翻译 parallel。",
+    "--batch-mtp 故意不加：双卡层拆分下 --batch 默认走流水线分组，流水线不跑槽位草稿，加了也会被引擎关掉；强制串行（STRATA_BATCH_MTP_SERIAL=1）实测低 16~20%。",
+    "专家全部 24576 个都在显存里（每卡 12288），显存没占满是正常的。",
+    "ESP（4 个 cvec 参数 + sampling.experimental_speed_projection）是官方的拒答方向投影，不是提速功能，每 token 反而慢 0.2~0.4%。v6 数据在开启状态下测得，所以这里保持原样；若当初为提速而开，请把 experimental_speed_projection 改为 false 或删掉 4 个 cvec 参数。见 docs/参数详解.md §2.7。",
+    "STRATA_ROUTE_TAIL_SKIP 取 0：专家全在显存且开了 --batch，0 和 7 在本机结果相同，保留 0 只是保证万一专家装不下时答案不受影响。",
+    "已删除 STRATA_ADAPT_OVERLAP / STRATA_ADAPT_OVERLAP_RESIDENT：只在单卡生效，本机日志为 'is off: not on a layer split'。",
+    "layer_split 保持 auto（解析为 24）。强制 28 实测无收益也无害。"
   ],
 
   "exe": "/data/Strata/engine-cuda12/strata",
@@ -53,9 +57,7 @@
   "env": {
     "STRATA_ROUTE_TAIL_SKIP": "0",
     "STRATA_RESIDENT_HEADROOM_GIB": "2",
-    "MALLOC_MMAP_THRESHOLD_": "16777216",
-    "STRATA_ADAPT_OVERLAP": "1",
-    "STRATA_ADAPT_OVERLAP_RESIDENT": "1"
+    "MALLOC_MMAP_THRESHOLD_": "16777216"
   },
 
   "reasoning_effort": "medium",

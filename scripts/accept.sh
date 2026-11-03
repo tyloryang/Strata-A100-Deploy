@@ -3,6 +3,7 @@
 set -u
 BASE=/data/qwen-strata
 LOG=/root/offline_check/accept.log
+mkdir -p "$(dirname "$LOG")"
 IP=${BIND_IP:-127.0.0.1}
 KEY=$(cat /etc/strata/api_key)
 
