@@ -62,7 +62,7 @@ PLE 表    --ple-io mmap（26.8 GiB 走页缓存，可回收）
 槽位      parallel=4 / --batch 4，流水线 2 组 × 2 槽，不用 batch-mtp
 投机      --spec 4 / --spec-min-p 0.5 / --mtp：单请求独占时生效，进 batch 槽位后不生效
 会话缓存  16384 MiB / 4 槽 / ≥4096 token / park-gain 2048
-ESP       已加载并默认开启 —— 官方说明是拒答方向投影，不是提速（见参数详解 §2.7）
+ESP       已加载，默认关闭，可按请求 / 按对话打开（v6 实测时是开启的；它是拒答方向投影，不是提速，见参数详解 §2.7）
 推理      reasoning_effort=medium，budget 4096，close_retry=true
 采样      temperature 1.0 / top_p 0.95 / top_k 20
 env       ROUTE_TAIL_SKIP=0（本机无作用）  RESIDENT_HEADROOM_GIB=2  MALLOC_MMAP_THRESHOLD_=16 MiB
@@ -119,7 +119,7 @@ env       ROUTE_TAIL_SKIP=0（本机无作用）  RESIDENT_HEADROOM_GIB=2  MALLO
 | 会话缓存在多轮负载下的真实价值 | 多轮第 12 轮 TTFT，开/关对比 |
 | `--kv k8v4` 的收益与质量 | 与 int8 对比解码速度和锁页内存，抽查质量 |
 | 去掉 `--kv-resident` 同时把 `--max-context` 降到 65536 | 日志仍 100% resident、两卡 VRAM free ≥ 1 GB、内存上升 |
-| 不开 ESP 的原模型基线 | `experimental_speed_projection: false` 重跑 A/B 两轮 |
+| 不开 ESP 的原模型基线（推荐配置现在默认关闭 ESP，而 v6/v5 是开启时测的） | 用推荐配置原样重跑 A/B 两轮；官方预期持平或略快 0.2–0.4% |
 | `--conversation-cache-mib 0` 为何仍停放会话 | 查 0.1.45 源码或换 `--conversation-cache-slots 0` 试 |
 | `--resident-experts` 对解码的影响 | 开/关对比（专家全在显存，预期无差异） |
 | 升级引擎到 0.2.7+ 后的 `STRATA_PIPED_MTP`、两卡逐层读 prompt | 见[参数详解 §7](参数详解.md#7-升级引擎后才能用的本机-0145-没有属于-iq3_xxs-的待验证项) |

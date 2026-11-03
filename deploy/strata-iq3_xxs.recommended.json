@@ -6,7 +6,7 @@
     "parallel 与 args 里的 --batch 必须一致：args 已写 --batch 时 server 不再翻译 parallel。",
     "--batch-mtp 故意不加：双卡层拆分下 --batch 默认走流水线分组，流水线不跑槽位草稿，加了也会被引擎关掉；强制串行（STRATA_BATCH_MTP_SERIAL=1）实测低 16~20%。",
     "专家全部 24576 个都在显存里（每卡 12288），显存没占满是正常的。",
-    "ESP（4 个 cvec 参数 + sampling.experimental_speed_projection）是官方的拒答方向投影，不是提速功能，每 token 反而慢 0.2~0.4%。v6 数据在开启状态下测得，所以这里保持原样；若当初为提速而开，请把 experimental_speed_projection 改为 false 或删掉 4 个 cvec 参数。见 docs/参数详解.md §2.7。",
+    "ESP 可选、默认关闭：4 个 cvec 参数照常加载向量，sampling.experimental_speed_projection=false 让请求默认不用它（输出与原模型逐 token 一致）。需要时按请求传 \"experimental_speed_projection\": true，或在 Web 聊天页的采样设置里按对话打开。ESP 是官方的拒答方向投影，不是提速功能。v6/v5 的实测是在 ESP 开启时测的。见 docs/参数详解.md §2.7。",
     "STRATA_ROUTE_TAIL_SKIP 取 0：专家全在显存且开了 --batch，0 和 7 在本机结果相同，保留 0 只是保证万一专家装不下时答案不受影响。",
     "已删除 STRATA_ADAPT_OVERLAP / STRATA_ADAPT_OVERLAP_RESIDENT：只在单卡生效，本机日志为 'is off: not on a layer split'。",
     "layer_split 保持 auto（解析为 24）。强制 28 实测无收益也无害。"
@@ -69,7 +69,7 @@
     "temperature": 1.0,
     "top_p": 0.95,
     "top_k": 20,
-    "experimental_speed_projection": true
+    "experimental_speed_projection": false
   },
 
   "parallel": 4,

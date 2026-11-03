@@ -41,7 +41,7 @@ cd /data/compose/strata && docker-compose config >/dev/null && docker-compose up
 
 这些以 `_` 开头的键是给人看的说明，server.py 不使用。JSON 不支持注释，所以说明只能这样写。**每个参数的完整解释在 [`docs/参数详解.md`](../docs/参数详解.md)**，这里只列两份配置共同的四个要点：
 
-1. **ESP 是开着的**（4 个 `--control-vector*` / `--cvec-*` 参数 + `sampling.experimental_speed_projection: true`）。它不是提速功能，见[参数详解 §2.7](../docs/参数详解.md#27-esp-控制向量先读这一节)，是否保留需要你决定。
+1. **ESP 可选、默认关闭**：4 个 `--control-vector*` / `--cvec-*` 参数照常加载向量，`sampling.experimental_speed_projection: false` 让请求默认不用它。需要时按请求或按对话打开，方法见[参数详解 §2.7](../docs/参数详解.md#27-esp-控制向量先读这一节)。它是拒答方向投影，不是提速功能。
 2. `STRATA_ROUTE_TAIL_SKIP=0` 在本机不起作用（专家全在显存），保留无害。
 3. 相对测试机最后使用的配置，整理时删除了 `STRATA_ADAPT_OVERLAP` 和 `STRATA_ADAPT_OVERLAP_RESIDENT`：本机日志显示它们在层拆分下是关闭的，删除不改变行为。
 4. 所有路径都是容器内路径，宿主机目录必须挂到容器的 `/data`。
