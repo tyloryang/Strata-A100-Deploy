@@ -6,6 +6,9 @@
 *.yml  text eol=lf
 *.md   text eol=lf
 
+# Preserve the exact measured upstream client bytes, including docstring spaces.
+tools/vllm-benchmark-client/benchmark_serving.py whitespace=-blank-at-eol
+
 *.png  binary
 *.gguf binary
 *.tar  binary

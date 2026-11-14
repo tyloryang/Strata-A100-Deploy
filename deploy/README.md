@@ -1,7 +1,10 @@
 # deploy/：IQ3_XXS 生产部署物
 
+> **最新实测配置（2026-11-14）**：[双 A100 PCIe 40GB 最终快照](strata-iq3_xxs.a100-pcie40g-20261114.measured.json)，针对 32K 新输入 TTFT 筛选并复验。平均 8.149 秒，未达 2 秒；完整差异、实际 argv 和测量条件见[最新压测报告](../docs/最新压测结果-2026-11-14.md)。它保留实际测试字段，仅 Key 脱敏，使用 `/data/Strata` 路径；不能直接覆盖下方旧 SXM4 Docker 配置。
+
 | 文件 | 放到哪里 | 是什么 |
 |---|---|---|
+| `strata-iq3_xxs.a100-pcie40g-20261114.measured.json` | 按实际 AutoDL 路径与私有 Key 配置 | **2026-11-14 最新实测快照**：4 引擎槽、prefill 8192，32K 目标选中组合 |
 | `strata-iq3_xxs.recommended.json` | `/data/qwen-strata/Strata/strata-iq3_xxs.json` | **推荐配置**：4 槽，长提示 / 文档分析（实测 v6） |
 | `strata-iq3_xxs.recommended-8slot.json` | 同上（二选一） | 变体：8 槽，短提示 / 高并发问答（实测 v5） |
 | `docker-compose.yml` | `/data/compose/strata/docker-compose.yml` | compose 服务定义，每个字段都有注释 |

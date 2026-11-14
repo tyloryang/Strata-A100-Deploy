@@ -1,0 +1,119 @@
+{
+  "verified_at": "2026-11-14T13:00:32.600091",
+  "gpu_type": "2 x NVIDIA A100-PCIE-40GB",
+  "driver_version": "550.90.07",
+  "cuda_driver_api_version": "12.4",
+  "cgroup_memory_max_bytes": 154618822656,
+  "cgroup_cpu_max": "2000000 100000",
+  "engine_build": {
+    "source": "local",
+    "version": "0.1.45",
+    "archs": [
+      80
+    ],
+    "vision": "none",
+    "toolkit": 12,
+    "cuda_dirs": [
+      "/usr/local/cuda/bin",
+      "/usr/local/cuda/lib64"
+    ],
+    "src": "b95137167bd9b751",
+    "vision_src": null
+  },
+  "engine_sha256": "6a84834000a259028971c924f6e3bd226b87637f3c50e285fbede3201b3a5a60",
+  "production_max_context": 262144,
+  "health_loaded": true,
+  "models_authenticated_status": 200,
+  "models_bad_key_status": 401,
+  "qa": {
+    "all_pass": true,
+    "cases": [
+      {
+        "case": "math",
+        "answer": "56",
+        "expected": "56",
+        "pass": true,
+        "e2e_s": 0.5698780119419098,
+        "usage": {
+          "prompt_tokens": 26,
+          "completion_tokens": 3,
+          "total_tokens": 29,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 26,
+          "prompt_ms": 437.5,
+          "prompt_per_token_ms": 16.827,
+          "prompt_per_second": 59.4,
+          "predicted_n": 3,
+          "predicted_ms": 82.8,
+          "predicted_per_token_ms": 27.6,
+          "predicted_per_second": 36.2,
+          "draft_n": 1,
+          "draft_n_accepted": 1
+        }
+      },
+      {
+        "case": "needle-middle",
+        "answer": "HARBOR-5827",
+        "expected": "HARBOR-5827",
+        "pass": true,
+        "e2e_s": 8.45704384893179,
+        "usage": {
+          "prompt_tokens": 32819,
+          "completion_tokens": 9,
+          "total_tokens": 32828,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 32819,
+          "prompt_ms": 8222.2,
+          "prompt_per_token_ms": 0.251,
+          "prompt_per_second": 3991.5,
+          "predicted_n": 9,
+          "predicted_ms": 188.2,
+          "predicted_per_token_ms": 20.911,
+          "predicted_per_second": 47.8,
+          "draft_n": 5,
+          "draft_n_accepted": 3
+        }
+      },
+      {
+        "case": "needle-end",
+        "answer": "MAPLE-9462",
+        "expected": "MAPLE-9462",
+        "pass": true,
+        "e2e_s": 8.011479392647743,
+        "usage": {
+          "prompt_tokens": 32818,
+          "completion_tokens": 8,
+          "total_tokens": 32826,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 32818,
+          "prompt_ms": 7826.6,
+          "prompt_per_token_ms": 0.238,
+          "prompt_per_second": 4193.1,
+          "predicted_n": 8,
+          "predicted_ms": 140.4,
+          "predicted_per_token_ms": 17.55,
+          "predicted_per_second": 57.0,
+          "draft_n": 6,
+          "draft_n_accepted": 3
+        }
+      }
+    ]
+  },
+  "service_acceptance_pass": true,
+  "note": "Historical acceptance at the recorded timestamp, not a current service availability guarantee."
+}
