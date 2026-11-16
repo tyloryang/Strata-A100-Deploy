@@ -1,0 +1,3 @@
+{"group": 1, "run": 1, "prompt_tokens": 109625, "completion_tokens": 4096, "ttft_s": 3.003, "total_s": 240.966, "decode_tps": 17.213, "e2e_tps": 16.998, "content_chars": 11580}
+{"group": 1, "run": 2, "prompt_tokens": 109625, "completion_tokens": 4096, "ttft_s": 0.11, "total_s": 120.107, "decode_tps": 34.134, "e2e_tps": 34.103, "content_chars": 12760}
+{"group": 1, "run": 3, "prompt_tokens": 109625, "completion_tokens": 4096, "ttft_s": 0.101, "total_s": 124.347, "decode_tps": 32.967, "e2e_tps": 32.94, "content_chars": 11912}

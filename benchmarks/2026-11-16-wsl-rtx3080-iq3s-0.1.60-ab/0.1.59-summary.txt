@@ -1,0 +1,13 @@
+engine=0.1.59 model=iq3_s start=2026-11-16T08:24:26+08:00
+health_before={"status": "ok", "max_context": 262144, "model": "qwen3.8-flash-next-iq3_s", "images": false, "api_key": false, "image_generation": false, "loaded": true, "service": "strata"}
+gpu_before=15388 MiB, 50, 13 %
+run 1 start=2026-11-16T08:24:27+08:00
+run 1 exit=0 end=2026-11-16T08:40:15+08:00
+run 2 start=2026-11-16T08:40:15+08:00
+run 2 exit=0 end=2026-11-16T08:49:25+08:00
+run 3 start=2026-11-16T08:49:25+08:00
+run 3 exit=0 end=2026-11-16T08:50:55+08:00
+quality exit=0
+gpu_after=19719 MiB, 80, 75 %
+health_after={"status": "ok", "max_context": 262144, "model": "qwen3.8-flash-next-iq3_s", "images": false, "api_key": false, "image_generation": false, "loaded": true, "service": "strata"}
+end=2026-11-16T08:51:29+08:00

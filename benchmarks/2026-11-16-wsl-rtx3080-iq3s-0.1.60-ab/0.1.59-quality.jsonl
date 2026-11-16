@@ -1,0 +1,6 @@
+{"id": "math1", "prompt": "只写数字，不要任何解释：1+2+3+...+100 等于多少？", "output": "5050", "prompt_tokens": 75, "completion_tokens": 61}
+{"id": "math2", "prompt": "一个长方形长 12、宽 7，它的周长和面积各是多少？只写两个数字，用逗号分开。", "output": "38,84", "prompt_tokens": 79, "completion_tokens": 104}
+{"id": "code1", "prompt": "用 Python 写一个函数 is_palindrome(s)，判断字符串忽略大小写和空格后是不是回文。只给代码，不要解释。", "output": "def is_palindrome(s: str) -> bool:\n    cleaned = ''.join(ch.lower() for ch in s if ch != ' ')\n    return cleaned == cleaned[::-1]", "prompt_tokens": 82, "completion_tokens": 215}
+{"id": "code2", "prompt": "指出这段代码的问题并给出修正后的版本：def add(a, b): return a + b；print(add('1', 2))。只给修正后的代码和一句话说明。", "output": null, "prompt_tokens": 91, "completion_tokens": 512}
+{"id": "fact1", "prompt": "中国的首都是哪里？只写城市名。", "output": "北京", "prompt_tokens": 62, "completion_tokens": 37}
+{"id": "fact2", "prompt": "水的化学式是什么？只写化学式。", "output": "H₂O", "prompt_tokens": 62, "completion_tokens": 32}
