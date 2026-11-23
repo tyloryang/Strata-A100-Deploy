@@ -43,6 +43,20 @@
 | `compose_up_test.sh` / `compose_up2.sh` | 从 `docker run` 切到 compose 管理（**一次性迁移，测试机上已做完**） | 中断服务 |
 | `rmf_test.sh` | ⚠️ 复现"运行中 `docker rm -f` 卡死"。**默认拒绝执行**，要设 `I_KNOW_THIS_BREAKS_SERVICE=1` | 中断服务，容器可能卡约 5 分钟 |
 
+### Strata 0.2.20 升级与实测（2026-11-23，后缀 `_0220`）
+
+路径写死为 `/data/Strata-0.2.20`、容器名 `strata-0220`。步骤与结果见 [0.2.20 升级实测](../docs/Strata-0.2.20升级实测-2026-11-23.md)。
+
+| 脚本 | 在哪跑 | 做什么 | 只读？ |
+|---|---|---|---|
+| `cuda_probe_0220.py` | 容器内，用 control 包自带的 python | 加载包里的 cudart/cublas，打印运行库与驱动版本，每卡建上下文并跑一次 SGEMM；输出 `CUDA-PROBE-OK` 才算通过 | 是 |
+| `mkcfg_0220.py` | 宿主机 | 从 `/data/Strata/strata-iq3_xxs.json` 生成新配置，只改 exe/cwd/log/lib_dirs，打印差异；目标已存在时拒绝覆盖 | 否（写新配置） |
+| `start_0220.sh` | 宿主机 | 修正 expert-profile 路径（先备份 `.orig`），存档并 `docker stop -t 120` 旧容器（不删），起 `strata-0220` | 否（停旧容器） |
+| `ab_0220.sh` | 宿主机 | armC（0.2.20 原配置）/ armD（+`STRATA_NV_CHUNK=0`）32K TTFT A/B，`trap` 结束时自动还原配置并重启 | 否（重启容器） |
+| `supp_0220.sh` | 宿主机 | NV_CHUNK 只读调查 + 解码并发梯度 1/2/4/8 + 质量题；不改配置、不重启 | 是（会发请求） |
+| `decode_bench_0220.py` | 容器内（由 supp 调用） | 参数 `N MAX_TOKENS TAG OUTDIR`，流式并发解码计时 | 是 |
+| `quality_0220.py` | 容器内（由 supp 调用） | 参数 `OUTDIR TAG`，6 道 `temperature 0` 固定题 + 32K 大海捞针 | 是 |
+
 ## 二、可调的环境变量
 
 | 变量 | 默认值 | 用在哪些脚本 | 含义 |
