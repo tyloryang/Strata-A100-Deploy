@@ -5,6 +5,8 @@
 | 文件 | 放到哪里 | 是什么 |
 |---|---|---|
 | `strata-iq3_xxs.a100-pcie40g-20261114.measured.json` | 按实际 AutoDL 路径与私有 Key 配置 | **2026-11-14 最新实测快照**：4 引擎槽、prefill 8192，32K 目标选中组合 |
+| `strata-iq3_xxs.0.2.20.example.json` | `/data/Strata-0.2.20/strata-iq3_xxs.json` | **0.2.20（引擎 0.1.66）8 槽层拆分**：`layer_split 26`、`--batch 8`，测试机 2026-11-23 实测用的就是它，api_key 为占位符 |
+| `strata-iq3_xxs.0.1.45-8slot-split26.json` | `/data/Strata/strata-iq3_xxs.json` | **0.1.45 目录布局的同一套 8 槽层拆分配置**，差异见下方“0.1.45 与 0.2.20 版 8 槽配置的差异” |
 | `strata-iq3_xxs.recommended.json` | `/data/qwen-strata/Strata/strata-iq3_xxs.json` | **推荐配置**：4 槽，长提示 / 文档分析（实测 v6） |
 | `strata-iq3_xxs.recommended-8slot.json` | 同上（二选一） | 变体：8 槽，短提示 / 高并发问答（实测 v5） |
 | `docker-compose.yml` | `/data/compose/strata/docker-compose.yml` | compose 服务定义，每个字段都有注释 |
@@ -39,6 +41,23 @@ cd /data/compose/strata && docker-compose config >/dev/null && docker-compose up
 | `--conversation-cache-slots` | 4 | 8 |
 | 长提示（in=2000）并发 8 | 聚合 59.5 tok/s，TPOT 45.9 ms | 聚合 56.4 tok/s，TPOT 94.7 ms |
 | 短提示（in≈800）并发 8 | 聚合 80.7 tok/s，TPOT 40.8 ms | 聚合 89.3 tok/s，TPOT 71.4 ms |
+
+## 0.1.45 与 0.2.20 版 8 槽配置的差异
+
+`strata-iq3_xxs.0.1.45-8slot-split26.json` 与 `strata-iq3_xxs.0.2.20.example.json` 的引擎参数（`args`）、采样、推理、`parallel 8`、`layer_split "26"`、`gpu [0,1]`、端口都相同，只有下面几处不同：
+
+| 字段 | 0.1.45 版 | 0.2.20 版 |
+|---|---|---|
+| `exe` | `/data/Strata/engine-cuda12/strata` | `/data/Strata-0.2.20/engine-cuda12/strata` |
+| `args` 里的 `--expert-profile` | `/data/Strata/data/expert-profile.bin` | `/data/Strata-0.2.20/data/expert-profile.bin` |
+| `cwd` | `/data/Strata` | `/data/Strata-0.2.20` |
+| `log` | `/data/Strata/strata-iq3_xxs.log` | `/data/Strata-0.2.20/strata-iq3_xxs.log` |
+| `lib_dirs` | `["/usr/local/cuda/bin", "/usr/local/cuda/lib64"]`（镜像里的 CUDA 12.4） | `["/data/Strata-0.2.20/engine-cuda12"]`（包内自带 CUDA 12.9） |
+| `env.STRATA_RESIDENT_HEADROOM_GIB` | `"2"` | `"12"` |
+
+- **`STRATA_RESIDENT_HEADROOM_GIB`**：0.1.45 版按提供的配置保留为 `2`。测试机 2026-11-23 的 0.1.45 / 0.2.20 A/B 两边实际运行的都是 `12`（容器内引擎进程 env 已核对），所以文档里的 A/B 数字对应 `12`。用 `2` 的性能**未实测**；要和文档数字对齐，就改成 `12`。
+- 两份文件的 `api_key` 都是占位符 `<YOUR_API_KEY>`，部署时按上方“用法”第 1 步填入真实 Key 并 `chmod 600`。
+- 0.1.45 版要配合旧容器使用（挂载 `/data/Strata`，Python 用镜像里的 `python3`）；放进只挂 `/data/Strata-0.2.20` 的新容器会找不到引擎。
 
 ## 配置文件里的 `_说明` / `_注意` / `_代价`
 
